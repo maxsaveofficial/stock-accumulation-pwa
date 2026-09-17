@@ -1,0 +1,45 @@
+window.StockFlow = (() => {
+  const clamp=(x,a=0,b=100)=>Math.max(a,Math.min(b,x));
+  const avg=(a)=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0;
+  const sma=(a,n)=>a.length<n?null:avg(a.slice(-n));
+  const pct=(a,b)=>b?((a/b)-1)*100:0;
+  function analyze(rows, lookback=20){
+    const r=rows.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+    if(r.length<2)return null;
+    const n=Math.min(lookback,r.length), w=r.slice(-n), last=w[w.length-1];
+    const ranges=w.map(x=>Math.max(x.high-x.low,Math.abs(x.high-x.close),Math.abs(x.low-x.close)));
+    const atr=avg(ranges), avgVol=avg(w.map(x=>x.volume||0)), volRatio=avgVol?last.volume/avgVol:1;
+    const clv=w.map(x=>x.high===x.low?0:((x.close-x.low)-(x.high-x.close))/(x.high-x.low));
+    const mf=avg(w.map((x,i)=>clv[i]*(x.volume||0)));
+    const mfNorm=avgVol?clamp(50+50*(mf/avgVol)):50;
+    const upVol=w.filter(x=>x.close>=x.open).reduce((s,x)=>s+(x.volume||0),0), downVol=w.filter(x=>x.close<x.open).reduce((s,x)=>s+(x.volume||0),0);
+    const pressure=upVol+downVol?100*upVol/(upVol+downVol):50;
+    const sma5=sma(r.map(x=>x.close),5), sma20=sma(r.map(x=>x.close),20), sma60=sma(r.map(x=>x.close),60);
+    const trend=clamp(50 + (sma20?25*(last.close/sma20-1)*100:0) + (sma60?15*(last.close/sma60-1)*100:0));
+    const recent=w.slice(0,-1), support=recent.length?Math.min(...recent.map(x=>x.low)):last.low, resistance=recent.length?Math.max(...recent.map(x=>x.high)):last.high;
+    const supportDist=atr?((last.close-support)/atr):0, resistanceDist=atr?((resistance-last.close)/atr):0;
+    const supportScore=clamp(100-Math.abs(supportDist)*30), chasePenalty=clamp(Math.max(0,(last.close-resistance)/Math.max(atr,.000001))*30);
+    const brokerNet=last.brokerNetValue;
+    const brokerScore=brokerNet==null?50:clamp(50+(brokerNet/Math.max(Math.abs(last.value||last.volume*last.close),1))*50);
+    const acc=clamp(.28*mfNorm+.18*pressure+.16*clamp(volRatio*50)+.16*trend+.12*supportScore+.10*brokerScore);
+    const dist=clamp(.28*(100-mfNorm)+.18*(100-pressure)+.16*clamp((2-volRatio)*50)+.16*(100-trend)+.12*(100-supportScore)+.10*(100-brokerScore));
+    const breakdown=clamp((last.close<support?70:0)+(volRatio>1.5&&last.close<last.open?25:0)+(trend<35?20:0));
+    const signal=acc>=68&&dist<55&&chasePenalty<35?'BUY':dist>=68&&acc<55?'SELL':'NEUTRAL';
+    const score=signal==='BUY'?acc:signal==='SELL'?dist:Math.max(acc,dist);
+    return {ticker:last.ticker||'',date:last.date,price:last.close,acc,dist,score,signal,volRatio,trend,pressure,mfNorm,breakdown,brokerScore,chasePenalty,atr,support,resistance};
+  }
+  function classify(all, horizon=5){
+    const results=all.map(s=>{const a=analyze(s.rows,s.lookback||20);return a?{...a,ticker:s.ticker}:null}).filter(Boolean);
+    const buy=results.filter(x=>x.signal==='BUY').sort((a,b)=>b.score-a.score).slice(0,5);
+    const sell=results.filter(x=>x.signal==='SELL').sort((a,b)=>b.score-a.score).slice(0,5);
+    return {results,buy,sell,horizon};
+  }
+  function backtest(series,horizon=5,lookback=20){
+    const observations=[];
+    series.forEach(s=>{const r=s.rows.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)); for(let i=lookback;i<r.length-horizon;i++){const a=analyze(r.slice(0,i+1),lookback); if(!a||a.signal==='NEUTRAL')continue; const future=r[i+horizon].close, ret=(future/r[i].close-1)*100; observations.push({signal:a.signal,ret});}});
+    if(!observations.length)return {hitRate:null,avgReturn:null,count:0};
+    const hits=observations.filter(x=>x.signal==='BUY'?x.ret>0:x.ret<0).length;
+    return {hitRate:100*hits/observations.length,avgReturn:avg(observations.map(x=>x.signal==='BUY'?x.ret:-x.ret)),count:observations.length};
+  }
+  return {analyze,classify,backtest};
+})();
