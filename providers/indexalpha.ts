@@ -54,13 +54,29 @@ export async function brokerSummary(ticker: string, date: string) {
 export async function ohlcv(ticker: string, from: string, to = from) {
   const fromDate = checkDate(from), toDate = checkDate(to);
   if (fromDate > toDate) throw new Error('from must be <= to');
-  const params = new URLSearchParams({ ticker: ticker.toUpperCase(), from: fromDate, to: toDate });
+  const symbol = ticker.toUpperCase();
+  const params = new URLSearchParams({ ticker: symbol, from: fromDate, to: toDate });
   const response = await fetch(`${BASE_URL}/stocks/ohlcv?${params}`, { headers: headers() });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = body && typeof body === 'object' && 'error' in body ? String((body as { error?: unknown }).error) : '';
     throw new Error(`Index Alpha OHLCV HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
   }
-  return body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
-    ? (body as { data: unknown[] }).data : [];
+
+  const rows = body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
+    ? (body as { data: Record<string, unknown>[] }).data : [];
+
+  // Index Alpha's OHLCV response is ticker-specific and therefore does not
+  // include a ticker field. Our frontend normalizer requires one, so inject
+  // the requested symbol here while preserving the documented OHLCV fields.
+  return rows.map(r => ({
+    date: String(r.date ?? r.tradeDate ?? ''),
+    ticker: symbol,
+    open: Number(r.open ?? NaN),
+    high: Number(r.high ?? NaN),
+    low: Number(r.low ?? NaN),
+    close: Number(r.close ?? NaN),
+    volume: Number(r.volume ?? 0),
+    value: Number(r.value ?? 0),
+  })).filter(r => r.date && [r.open, r.high, r.low, r.close].every(Number.isFinite));
 }
