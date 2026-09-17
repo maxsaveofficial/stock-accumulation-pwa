@@ -8,21 +8,32 @@ let sessionAt = 0;
 
 const browserHeaders: HeadersInit = {
   Accept: 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
-  Referer: 'https://www.idx.co.id/',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/133.0 Safari/537.36',
-  'X-Requested-With': 'XMLHttpRequest'
+  'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+  Referer: 'https://www.idx.co.id/id',
+  Origin: 'https://www.idx.co.id',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0',
+  'X-Requested-With': 'XMLHttpRequest',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-origin'
 };
 
 async function ensureSession() {
   if (sessionCookie && Date.now() - sessionAt < 10 * 60 * 1000) return;
+
+  console.log('[IDX] opening home');
   const home = await fetch(IDX_HOME, { headers: browserHeaders });
+  console.log('[IDX] home status:', home.status);
   const cookies = home.headers.getSetCookie?.() ?? [];
   sessionCookie = cookies.join('; ');
   sessionAt = Date.now();
+  console.log('[IDX] session cookie received:', Boolean(sessionCookie));
   await home.body?.cancel();
+
   const headers = { ...browserHeaders, ...(sessionCookie ? { Cookie: sessionCookie } : {}) };
+  console.log('[IDX] checking session');
   const check = await fetch(IDX_INDEX, { headers });
+  console.log('[IDX] session check status:', check.status);
   if (!check.ok) {
     await check.body?.cancel();
     throw new Error(`IDX session check HTTP ${check.status}`);
@@ -33,7 +44,9 @@ async function ensureSession() {
 async function idxFetch(url: string) {
   await ensureSession();
   const headers = { ...browserHeaders, ...(sessionCookie ? { Cookie: sessionCookie } : {}) };
+  console.log('[IDX] fetch:', url);
   const response = await fetch(url, { headers });
+  console.log('[IDX] response:', response.status, url);
   if (response.status === 401 || response.status === 403) {
     sessionCookie = '';
     sessionAt = 0;
@@ -103,8 +116,10 @@ async function broker(date: string) {
 
 Deno.serve(async request => {
   const url = new URL(request.url);
+  console.log('[HTTP]', request.method, url.pathname + url.search);
   if (request.method === 'OPTIONS') return json({ ok: true });
   try {
+    if (url.pathname === '/') return json({ ok: true, service: 'stock-flow-backend', endpoints: ['/health', '/market?date=YYYYMMDD', '/broker?date=YYYYMMDD'] });
     if (url.pathname === '/health') return json({ ok: true, service: 'stock-flow-backend', ts: new Date().toISOString(), session: Boolean(sessionCookie) });
     if (url.pathname === '/market') {
       const date = url.searchParams.get('date');
@@ -120,6 +135,7 @@ Deno.serve(async request => {
     }
     return json({ error: 'not found' }, 404);
   } catch (error) {
+    console.error('[ERROR]', error);
     return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 502);
   }
 });
