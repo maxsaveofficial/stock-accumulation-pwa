@@ -19,10 +19,7 @@ function apiKey() {
 }
 
 function headers(): HeadersInit {
-  return {
-    Accept: 'application/json',
-    Authorization: `Bearer ${apiKey()}`,
-  };
+  return { Accept: 'application/json', Authorization: `Bearer ${apiKey()}` };
 }
 
 function checkDate(date: string) {
@@ -32,64 +29,38 @@ function checkDate(date: string) {
 
 export async function brokerSummary(ticker: string, date: string) {
   const d = checkDate(date);
-  const params = new URLSearchParams({
-    ticker: ticker.toUpperCase(),
-    from: d,
-    to: d,
-    investor: 'all',
-    market: 'RG',
-  });
-
-  const response = await fetch(`${BASE_URL}/stocks/broker-summary?${params}`, {
-    headers: headers(),
-  });
-
+  const params = new URLSearchParams({ ticker: ticker.toUpperCase(), from: d, to: d, investor: 'all', market: 'RG' });
+  const response = await fetch(`${BASE_URL}/stocks/broker-summary?${params}`, { headers: headers() });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = body && typeof body === 'object' && 'error' in body ? String((body as { error?: unknown }).error) : '';
     throw new Error(`Index Alpha broker HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
   }
-
   const rows = body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
-    ? (body as { data: IndexAlphaBrokerRow[] }).data
-    : [];
-
+    ? (body as { data: IndexAlphaBrokerRow[] }).data : [];
   return rows.map(r => ({
-    date,
-    ticker: ticker.toUpperCase(),
-    broker: String(r.code ?? ''),
-    brokerName: String(r.code ?? ''),
-    buyValue: Number(r.buy_value ?? 0),
-    sellValue: Number(r.sell_value ?? 0),
+    date, ticker: ticker.toUpperCase(), broker: String(r.code ?? ''), brokerName: String(r.code ?? ''),
+    buyValue: Number(r.buy_value ?? 0), sellValue: Number(r.sell_value ?? 0),
     totalValue: Number(r.buy_value ?? 0) + Number(r.sell_value ?? 0),
-    buyVolume: Number(r.buy_volume ?? 0),
-    sellVolume: Number(r.sell_volume ?? 0),
+    buyVolume: Number(r.buy_volume ?? 0), sellVolume: Number(r.sell_volume ?? 0),
     volume: Number(r.buy_volume ?? 0) + Number(r.sell_volume ?? 0),
-    buyFrequency: Number(r.buy_freq ?? 0),
-    sellFrequency: Number(r.sell_freq ?? 0),
+    buyFrequency: Number(r.buy_freq ?? 0), sellFrequency: Number(r.sell_freq ?? 0),
     frequency: Number(r.buy_freq ?? 0) + Number(r.sell_freq ?? 0),
-    buyAvg: Number(r.buy_avg ?? 0),
-    sellAvg: Number(r.sell_avg ?? 0),
+    buyAvg: Number(r.buy_avg ?? 0), sellAvg: Number(r.sell_avg ?? 0),
     netValue: Number(r.buy_value ?? 0) - Number(r.sell_value ?? 0),
   })).filter(r => r.broker);
 }
 
-export async function ohlcv(ticker: string, date: string) {
-  const d = checkDate(date);
-  const params = new URLSearchParams({
-    ticker: ticker.toUpperCase(),
-    from: d,
-    to: d,
-  });
-
-  const response = await fetch(`${BASE_URL}/stocks/ohlcv?${params}`, {
-    headers: headers(),
-  });
+export async function ohlcv(ticker: string, from: string, to = from) {
+  const fromDate = checkDate(from), toDate = checkDate(to);
+  if (fromDate > toDate) throw new Error('from must be <= to');
+  const params = new URLSearchParams({ ticker: ticker.toUpperCase(), from: fromDate, to: toDate });
+  const response = await fetch(`${BASE_URL}/stocks/ohlcv?${params}`, { headers: headers() });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(`Index Alpha OHLCV HTTP ${response.status}`);
+    const detail = body && typeof body === 'object' && 'error' in body ? String((body as { error?: unknown }).error) : '';
+    throw new Error(`Index Alpha OHLCV HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
   }
   return body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
-    ? (body as { data: unknown[] }).data
-    : [];
+    ? (body as { data: unknown[] }).data : [];
 }
