@@ -19,8 +19,8 @@
 <script src="analysis.js"></script><script src="data-provider.js"></script><script src="app.js"></script>
 <script>
 $('downloadCsv').onclick=()=>{
-  const rows=[['Saham','Tanggal','Open','High','Low','Close','Volume','Broker','Buy Value','Sell Value','Buy Volume','Sell Volume']];
-  data.forEach(s=>s.rows.forEach(r=>rows.push([s.ticker,r.date,r.open,r.high,r.low,r.close,r.volume,'','','','',''])));
+  const rows=[['Saham','Tanggal','Open','High','Low','Close','Volume','Broker','Buy Value','Sell Value','Buy Volume','Sell Volume','Broker Net Value']];
+  data.forEach(s=>s.rows.forEach(r=>rows.push([s.ticker,r.date,r.open,r.high,r.low,r.close,r.volume,'','','','','',r.brokerNetValue??''])));
   const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download='stock-flow-demo.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
