@@ -119,13 +119,36 @@ async function stock(ticker: string, from: string, to: string, provider = config
   return result;
 }
 
+const staticFiles: Record<string, { path: string; type: string }> = {
+  '/': { path: 'index.html', type: 'text/html; charset=utf-8' },
+  '/index.html': { path: 'index.html', type: 'text/html; charset=utf-8' },
+  '/styles.css': { path: 'styles.css', type: 'text/css; charset=utf-8' },
+  '/analysis.js': { path: 'analysis.js', type: 'application/javascript; charset=utf-8' },
+  '/data-provider.js': { path: 'data-provider.js', type: 'application/javascript; charset=utf-8' },
+  '/app.js': { path: 'app.js', type: 'application/javascript; charset=utf-8' },
+  '/manifest.webmanifest': { path: 'manifest.webmanifest', type: 'application/manifest+json; charset=utf-8' },
+  '/icon.svg': { path: 'icon.svg', type: 'image/svg+xml' },
+  '/sw.js': { path: 'sw.js', type: 'application/javascript; charset=utf-8' }
+};
+
+async function serveStatic(pathname: string) {
+  const file = staticFiles[pathname];
+  if (!file) return null;
+  try {
+    const body = await Deno.readFile(file.path);
+    return new Response(body, { headers: { 'Content-Type': file.type, 'Cache-Control': pathname === '/' ? 'no-store' : 'no-cache' } });
+  } catch {
+    return new Response('Frontend file not found', { status: 500 });
+  }
+}
+
 Deno.serve(async request => {
   const url = new URL(request.url);
   if (request.method === 'OPTIONS') return json({ ok: true });
   try {
-    if (url.pathname === '/') return json({ ok: true, service: 'stock-flow-backend', provider: configuredProvider(), indexAlphaConfigured: hasIndexAlphaKey(), endpoints: ['/health','/market?date=YYYYMMDD','/broker?date=YYYYMMDD','/broker?ticker=BBCA&date=YYYYMMDD&provider=indexalpha','/ohlcv?ticker=BBCA&date=YYYYMMDD&provider=indexalpha','/stock?ticker=BBCA&from=YYYYMMDD&to=YYYYMMDD&provider=indexalpha'] });
+    if (url.pathname === '/') return (await serveStatic('/'))!;
+    if (staticFiles[url.pathname] && !url.pathname.startsWith('/api/')) return (await serveStatic(url.pathname))!;
     if (url.pathname === '/health') return json({ ok: true, service: 'stock-flow-backend', ts: new Date().toISOString(), provider: configuredProvider(), indexAlphaConfigured: hasIndexAlphaKey(), session: Boolean(sessionCookie) });
-
     if (url.pathname === '/market') {
       const date = url.searchParams.get('date'); if (!validDate(date)) return json({ error: 'date must be YYYYMMDD' }, 400);
       const data = await market(date); return json({ ok: true, provider: 'idx', date, serverTimestamp: new Date().toISOString(), count: data.length, data });
