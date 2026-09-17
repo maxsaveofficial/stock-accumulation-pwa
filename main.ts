@@ -11,102 +11,63 @@ const configuredProvider = (): Provider => {
   const value = (Deno.env.get('DATA_PROVIDER') ?? 'auto').toLowerCase();
   return value === 'idx' || value === 'indexalpha' || value === 'auto' ? value : 'auto';
 };
-
 const hasIndexAlphaKey = () => Boolean(Deno.env.get('INDEX_ALPHA_API_KEY')?.trim());
 
 let sessionCookie = '';
 let sessionAt = 0;
+const stockCache = new Map<string, { at: number; data: unknown }>();
 
 const browserHeaders: HeadersInit = {
   Accept: 'application/json, text/plain, */*',
   'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-  Referer: 'https://www.idx.co.id/id',
-  Origin: 'https://www.idx.co.id',
+  Referer: 'https://www.idx.co.id/id', Origin: 'https://www.idx.co.id',
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0',
-  'X-Requested-With': 'XMLHttpRequest',
-  'Sec-Fetch-Dest': 'empty',
-  'Sec-Fetch-Mode': 'cors',
-  'Sec-Fetch-Site': 'same-origin'
+  'X-Requested-With': 'XMLHttpRequest', 'Sec-Fetch-Dest': 'empty', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Site': 'same-origin'
 };
 
 async function ensureSession() {
   if (sessionCookie && Date.now() - sessionAt < 10 * 60 * 1000) return;
-
-  console.log('[IDX] opening home');
   const home = await fetch(IDX_HOME, { headers: browserHeaders });
-  console.log('[IDX] home status:', home.status);
   const cookies = home.headers.getSetCookie?.() ?? [];
-  sessionCookie = cookies.join('; ');
-  sessionAt = Date.now();
-  console.log('[IDX] session cookie received:', Boolean(sessionCookie));
-  await home.body?.cancel();
-
-  const headers = { ...browserHeaders, ...(sessionCookie ? { Cookie: sessionCookie } : {}) };
-  console.log('[IDX] checking session');
-  const check = await fetch(IDX_INDEX, { headers });
-  console.log('[IDX] session check status:', check.status);
-  if (!check.ok) {
-    await check.body?.cancel();
-    throw new Error(`IDX session check HTTP ${check.status}`);
-  }
+  sessionCookie = cookies.join('; '); sessionAt = Date.now(); await home.body?.cancel();
+  const check = await fetch(IDX_INDEX, { headers: { ...browserHeaders, ...(sessionCookie ? { Cookie: sessionCookie } : {}) } });
+  if (!check.ok) { await check.body?.cancel(); throw new Error(`IDX session check HTTP ${check.status}`); }
   await check.body?.cancel();
 }
 
 async function idxFetch(url: string) {
   await ensureSession();
   const headers = { ...browserHeaders, ...(sessionCookie ? { Cookie: sessionCookie } : {}) };
-  console.log('[IDX] fetch:', url);
   const response = await fetch(url, { headers });
-  console.log('[IDX] response:', response.status, url);
   if (response.status === 401 || response.status === 403) {
-    sessionCookie = '';
-    sessionAt = 0;
-    await response.body?.cancel();
-    await ensureSession();
+    sessionCookie = ''; sessionAt = 0; await response.body?.cancel(); await ensureSession();
     return fetch(url, { headers: { ...browserHeaders, ...(sessionCookie ? { Cookie: sessionCookie } : {}) } });
   }
   return response;
 }
 
 function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    }
-  });
+  return new Response(JSON.stringify(data), { status, headers: {
+    'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type'
+  }});
 }
-
-function validDate(value: string | null) {
-  return !!value && /^\d{8}$/.test(value);
-}
-
+function validDate(value: string | null) { return !!value && /^\d{8}$/.test(value); }
 function payloadRows(payload: unknown): Record<string, unknown>[] {
   if (Array.isArray(payload)) return payload as Record<string, unknown>[];
   if (!payload || typeof payload !== 'object') return [];
   const p = payload as Record<string, unknown>;
-  for (const key of ['data', 'rows', 'Data', 'Rows']) {
-    if (Array.isArray(p[key])) return p[key] as Record<string, unknown>[];
-  }
+  for (const key of ['data', 'rows', 'Data', 'Rows']) if (Array.isArray(p[key])) return p[key] as Record<string, unknown>[];
   return [];
 }
 
 async function market(date: string) {
   const response = await idxFetch(`${IDX_STOCK_SUMMARY}?date=${date}`);
   if (!response.ok) throw new Error(`IDX market HTTP ${response.status}`);
-  const rows = payloadRows(await response.json());
-  return rows.map(r => ({
-    date,
-    ticker: String(r.StockCode ?? ''),
-    open: Number(r.OpenPrice ?? 0), high: Number(r.High ?? 0), low: Number(r.Low ?? 0),
-    close: Number(r.Close ?? 0), volume: Number(r.Volume ?? 0), value: Number(r.Value ?? 0),
-    previous: Number(r.Previous ?? 0), change: Number(r.Change ?? 0),
-    bid: Number(r.Bid ?? 0), bidVolume: Number(r.BidVolume ?? 0),
-    offer: Number(r.Offer ?? 0), offerVolume: Number(r.OfferVolume ?? 0),
+  return payloadRows(await response.json()).map(r => ({
+    date, ticker: String(r.StockCode ?? ''), open: Number(r.OpenPrice ?? 0), high: Number(r.High ?? 0), low: Number(r.Low ?? 0),
+    close: Number(r.Close ?? 0), volume: Number(r.Volume ?? 0), value: Number(r.Value ?? 0), previous: Number(r.Previous ?? 0), change: Number(r.Change ?? 0),
+    bid: Number(r.Bid ?? 0), bidVolume: Number(r.BidVolume ?? 0), offer: Number(r.Offer ?? 0), offerVolume: Number(r.OfferVolume ?? 0),
     foreignBuy: Number(r.ForeignBuy ?? 0), foreignSell: Number(r.ForeignSell ?? 0)
   })).filter(r => r.ticker && Number.isFinite(r.close));
 }
@@ -114,96 +75,70 @@ async function market(date: string) {
 async function idxBroker(date: string) {
   const response = await idxFetch(`${IDX_BROKER_SUMMARY}?length=9999&start=0&date=${date}`);
   if (!response.ok) throw new Error(`IDX broker HTTP ${response.status}`);
-  const rows = payloadRows(await response.json());
-  return rows.map(r => ({
-    date,
-    broker: String(r.IDFirm ?? ''),
-    brokerName: String(r.FirmName ?? ''),
-    totalValue: Number(r.Value ?? 0),
-    volume: Number(r.Volume ?? 0),
-    frequency: Number(r.Frequency ?? 0)
-  })).filter(r => r.broker);
+  return payloadRows(await response.json()).map(r => ({ date, broker: String(r.IDFirm ?? ''), brokerName: String(r.FirmName ?? ''), totalValue: Number(r.Value ?? 0), volume: Number(r.Volume ?? 0), frequency: Number(r.Frequency ?? 0) })).filter(r => r.broker);
 }
 
 async function broker(date: string, ticker: string | null) {
   const provider = configuredProvider();
-
-  // Index Alpha's broker endpoint is ticker-specific. Keep the legacy IDX
-  // all-broker endpoint intact when no ticker is supplied.
-  if (provider === 'indexalpha') {
-    if (!ticker) throw new Error('ticker is required when DATA_PROVIDER=indexalpha');
-    return await indexAlphaBrokerSummary(ticker, date);
-  }
-
+  if (provider === 'indexalpha') { if (!ticker) throw new Error('ticker is required when DATA_PROVIDER=indexalpha'); return await indexAlphaBrokerSummary(ticker, date); }
   if (provider === 'auto' && ticker && hasIndexAlphaKey()) {
-    try {
-      return await indexAlphaBrokerSummary(ticker, date);
-    } catch (error) {
-      console.warn('[PROVIDER] Index Alpha broker failed, falling back to IDX:', error);
-    }
+    try { return await indexAlphaBrokerSummary(ticker, date); }
+    catch (error) { console.warn('[PROVIDER] Index Alpha broker failed, falling back to IDX:', error); }
   }
-
   return await idxBroker(date);
 }
 
-async function ohlcv(ticker: string, date: string) {
+async function ohlcv(ticker: string, from: string, to = from) {
   const provider = configuredProvider();
-  if (provider === 'indexalpha' || (provider === 'auto' && hasIndexAlphaKey())) {
-    return await indexAlphaOhlcv(ticker, date);
+  if (provider === 'indexalpha' || (provider === 'auto' && hasIndexAlphaKey())) return await indexAlphaOhlcv(ticker, from, to);
+  if (from !== to) {
+    const data: unknown[] = [];
+    const start = new Date(`${from.slice(0,4)}-${from.slice(4,6)}-${from.slice(6,8)}T00:00:00Z`);
+    const end = new Date(`${to.slice(0,4)}-${to.slice(4,6)}-${to.slice(6,8)}T00:00:00Z`);
+    for (let d = start; d <= end; d = new Date(d.getTime() + 86400000)) {
+      const ds = d.toISOString().slice(0,10).replaceAll('-','');
+      const rows = await market(ds); data.push(...rows.filter(row => row.ticker.toUpperCase() === ticker.toUpperCase()));
+    }
+    return data;
   }
-  const data = await market(date);
-  return data.filter(row => row.ticker.toUpperCase() === ticker.toUpperCase());
+  return (await market(from)).filter(row => row.ticker.toUpperCase() === ticker.toUpperCase());
+}
+
+async function stock(ticker: string, from: string, to: string) {
+  const key = `${configuredProvider()}|${ticker.toUpperCase()}|${from}|${to}`;
+  const cached = stockCache.get(key);
+  if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.data;
+  const prices = await ohlcv(ticker, from, to);
+  const brokerRows = await broker(to, ticker);
+  const result = { ticker: ticker.toUpperCase(), from, to, prices, broker: brokerRows };
+  stockCache.set(key, { at: Date.now(), data: result });
+  return result;
 }
 
 Deno.serve(async request => {
   const url = new URL(request.url);
-  console.log('[HTTP]', request.method, url.pathname + url.search);
   if (request.method === 'OPTIONS') return json({ ok: true });
   try {
-    if (url.pathname === '/') return json({
-      ok: true,
-      service: 'stock-flow-backend',
-      provider: configuredProvider(),
-      indexAlphaConfigured: hasIndexAlphaKey(),
-      endpoints: ['/health', '/market?date=YYYYMMDD', '/broker?date=YYYYMMDD', '/broker?ticker=BBCA&date=YYYYMMDD', '/ohlcv?ticker=BBCA&date=YYYYMMDD']
-    });
-
-    if (url.pathname === '/health') return json({
-      ok: true,
-      service: 'stock-flow-backend',
-      ts: new Date().toISOString(),
-      provider: configuredProvider(),
-      indexAlphaConfigured: hasIndexAlphaKey(),
-      session: Boolean(sessionCookie)
-    });
+    if (url.pathname === '/') return json({ ok: true, service: 'stock-flow-backend', provider: configuredProvider(), indexAlphaConfigured: hasIndexAlphaKey(), endpoints: ['/health','/market?date=YYYYMMDD','/broker?date=YYYYMMDD','/broker?ticker=BBCA&date=YYYYMMDD','/ohlcv?ticker=BBCA&date=YYYYMMDD','/stock?ticker=BBCA&from=YYYYMMDD&to=YYYYMMDD'] });
+    if (url.pathname === '/health') return json({ ok: true, service: 'stock-flow-backend', ts: new Date().toISOString(), provider: configuredProvider(), indexAlphaConfigured: hasIndexAlphaKey(), session: Boolean(sessionCookie) });
 
     if (url.pathname === '/market') {
-      const date = url.searchParams.get('date');
-      if (!validDate(date)) return json({ error: 'date must be YYYYMMDD' }, 400);
-      const data = await market(date);
-      return json({ ok: true, provider: 'idx', date, serverTimestamp: new Date().toISOString(), count: data.length, data });
+      const date = url.searchParams.get('date'); if (!validDate(date)) return json({ error: 'date must be YYYYMMDD' }, 400);
+      const data = await market(date); return json({ ok: true, provider: 'idx', date, serverTimestamp: new Date().toISOString(), count: data.length, data });
     }
-
     if (url.pathname === '/broker') {
-      const date = url.searchParams.get('date');
-      const ticker = url.searchParams.get('ticker');
-      if (!validDate(date)) return json({ error: 'date must be YYYYMMDD' }, 400);
-      const data = await broker(date, ticker);
-      return json({ ok: true, provider: ticker && (configuredProvider() === 'indexalpha' || (configuredProvider() === 'auto' && hasIndexAlphaKey())) ? 'indexalpha' : 'idx', date, ticker: ticker?.toUpperCase() ?? null, serverTimestamp: new Date().toISOString(), count: data.length, data });
+      const date = url.searchParams.get('date'), ticker = url.searchParams.get('ticker'); if (!validDate(date)) return json({ error: 'date must be YYYYMMDD' }, 400);
+      const data = await broker(date, ticker); return json({ ok: true, provider: ticker && (configuredProvider() === 'indexalpha' || (configuredProvider() === 'auto' && hasIndexAlphaKey())) ? 'indexalpha' : 'idx', date, ticker: ticker?.toUpperCase() ?? null, serverTimestamp: new Date().toISOString(), count: data.length, data });
     }
-
     if (url.pathname === '/ohlcv') {
-      const date = url.searchParams.get('date');
-      const ticker = url.searchParams.get('ticker');
-      if (!validDate(date)) return json({ error: 'date must be YYYYMMDD' }, 400);
-      if (!ticker) return json({ error: 'ticker is required' }, 400);
-      const data = await ohlcv(ticker, date);
-      return json({ ok: true, provider: configuredProvider() === 'idx' ? 'idx' : 'indexalpha', date, ticker: ticker.toUpperCase(), serverTimestamp: new Date().toISOString(), count: data.length, data });
+      const date = url.searchParams.get('date'), ticker = url.searchParams.get('ticker'); if (!validDate(date)) return json({ error: 'date must be YYYYMMDD' }, 400); if (!ticker) return json({ error: 'ticker is required' }, 400);
+      const data = await ohlcv(ticker, date); return json({ ok: true, provider: configuredProvider() === 'idx' ? 'idx' : 'indexalpha', date, ticker: ticker.toUpperCase(), serverTimestamp: new Date().toISOString(), count: data.length, data });
     }
-
+    if (url.pathname === '/stock') {
+      const ticker = url.searchParams.get('ticker'), from = url.searchParams.get('from'), to = url.searchParams.get('to');
+      if (!ticker) return json({ error: 'ticker is required' }, 400); if (!validDate(from) || !validDate(to)) return json({ error: 'from and to must be YYYYMMDD' }, 400);
+      const data = await stock(ticker, from, to); return json({ ok: true, provider: configuredProvider() === 'idx' ? 'idx' : 'indexalpha', serverTimestamp: new Date().toISOString(), ...data });
+    }
     return json({ error: 'not found' }, 404);
-  } catch (error) {
-    console.error('[ERROR]', error);
-    return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 502);
-  }
+  } catch (error) { console.error('[ERROR]', error); return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 502); }
 });
