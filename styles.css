@@ -10,3 +10,6 @@ header{padding-top:max(13px,calc(env(safe-area-inset-top) + 7px));}
 @media(max-width:650px){.header-capture{margin-left:8px;padding:6px 10px}header>div{min-width:0}header h1{white-space:nowrap}}
 
 @media(max-width:650px){.controls{grid-template-columns:1fr 1fr}.controls .stockpicker{grid-column:span 1}.controls .lookbackpicker{grid-column:span 1}.controls .providerpicker{grid-column:1/-1}}
+
+
+.app-log{background:#f9fafb;color:#6b7280;padding:10px 14px}.app-log>div{display:flex;flex-direction:column;gap:3px}.app-log b{font-size:9px;letter-spacing:.04em}.app-log small{font-size:10px}.app-log footer{margin-top:7px;padding-top:7px;border-top:1px solid #e5e7eb;font-size:9px;color:#9ca3af;text-align:center}
