@@ -72,6 +72,17 @@ function restoreCache(){try{const x=JSON.parse(localStorage.getItem(CACHE_KEY)||
 async function loadLiveAll(){const p=provider(),to=new Date(),from=new Date(to.getTime()-89*86400000),label=p==='auto'?'Daily Remote CSV → Yahoo → Cache':p.toUpperCase();setLiveStatus(`Mengambil ALL via ${label}...`);const url=`${BACKEND_URL}/market-range?from=${ymd(from)}&to=${ymd(to)}&provider=${encodeURIComponent(p)}`,res=await fetch(url,{cache:'no-store'}),j=await res.json();if(!res.ok||!j.ok)throw Error(j.error||`HTTP ${res.status}`);const prices=StockFlowProvider.normalize(j.data||[]);if(!prices.length)throw Error('Data market kosong');data=StockFlowProvider.group(prices);brokerRows=[];refresh();render();$('status').textContent=(j.provider||p).toUpperCase();setLiveStatus(`${j.source||p} · ALL · ${data.length} saham · ${prices.length} baris OHLCV · tanpa broker detail`);saveCache();stamp()}
 async function loadLiveStock(){const t=[...selectedTickers];if(t.length!==1)return loadLiveAll();const ticker=t[0];const p=provider(),to=new Date(),from=new Date(to.getTime()-89*86400000),url=`${BACKEND_URL}/stock?ticker=${encodeURIComponent(ticker)}&from=${ymd(from)}&to=${ymd(to)}&provider=${encodeURIComponent(p)}`;setLiveStatus(`Mengambil ${ticker} via ${p.toUpperCase()}...`);const res=await fetch(url,{cache:'no-store'}),j=await res.json();if(!res.ok||!j.ok)throw Error(j.error||`HTTP ${res.status}`);const prices=StockFlowProvider.normalize(j.prices||[]),br=j.broker||[];if(!prices.length)throw Error('OHLCV kosong');data=StockFlowProvider.group(StockFlowProvider.mergeBrokerRows(prices,br));brokerRows=br;refresh();selectedTickers=new Set([ticker]);refresh();render();$('status').textContent=(j.provider||p).toUpperCase();setLiveStatus(`${j.source||p} · ${ticker} · ${prices.length} hari · ${br.length} broker rows`);saveCache();stamp()}
 function stamp(){$('lastUpdate').textContent=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}function setLiveStatus(x){$('liveStatus').textContent=x}
-async function toggle(){if(liveEnabled){liveEnabled=false;$('liveToggle').textContent='LIVE OFF';setLiveStatus('Live dihentikan');return}try{liveEnabled=true;$('liveToggle').textContent='LIVE ON';await loadLiveStock()}catch(e){liveEnabled=false;$('liveToggle').textContent='LIVE OFF';if(provider()==='auto'&&restoreCache())return;$('status').textContent='OFFLINE';setLiveStatus(`Live gagal: ${e.message} · tidak ada cache lokal`)}}
-$('lookback').onchange=render;$('provider').onchange=()=>{info();if(liveEnabled)loadLiveStock().catch(e=>setLiveStatus('Live gagal: '+e.message))};$('liveToggle').onclick=toggle;
-try{const s=localStorage.getItem(PROVIDER_KEY);if(['auto','idx','yahoo','indexalpha','remote-csv'].includes(s))$('provider').value=s}catch{}info();refresh();render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+async function autoLoad(){
+  try{
+    await loadLiveStock();
+  }catch(e){
+    if(provider()==='auto'&&restoreCache())return;
+    $('status').textContent='OFFLINE';
+    setLiveStatus(`Data live gagal: ${e.message} · kalkulasi lokal tetap aktif`);
+    render();
+  }
+}
+$('lookback').onchange=render;
+$('provider').onchange=()=>{info();autoLoad()};
+info();refresh();render();setTimeout(autoLoad,50);
+try{const s=localStorage.getItem(PROVIDER_KEY);if(['auto','idx','yahoo','indexalpha','remote-csv'].includes(s))$('provider').value=s}catch{}if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
