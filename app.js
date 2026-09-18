@@ -62,7 +62,7 @@ function render(){
           const st=document.createElement('div');st.dataset.horizon=h;st.innerHTML='<small>T+'+h+'</small><b>…</b><span>menghitung</span>';stats.appendChild(st);
         });
         const update=async(h,x)=>{
-          const ret=Number(x?.total?.avgReturn),hit=Number(x?.total?.hitRate),count=Number(x?.total?.count||0);
+          const rawRet=x?.total?.avgReturn,rawHit=x?.total?.hitRate,ret=rawRet==null?NaN:Number(rawRet),hit=rawHit==null?NaN:Number(rawHit),count=Number(x?.total?.count||0);
           results.push({h,ret,hit,count});
           const st=stats.querySelector('[data-horizon="'+h+'"]');
           if(st)st.innerHTML='<small>T+'+h+'</small><b>'+(Number.isFinite(ret)?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':count+' signal')+'</span>';
