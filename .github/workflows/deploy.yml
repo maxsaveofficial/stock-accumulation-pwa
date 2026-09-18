@@ -1,34 +1,32 @@
-name: Deploy Stock Flow PWA
+name: Validate Stock Flow PWA
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
-
-concurrency:
-  group: deno-production
-  cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Deploy to Deno Deploy
+  validate:
+    name: Validate repository
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
-      - name: Deploy to Deno Deploy
-        uses: denoland/deployctl@v1
-        with:
-          project: stock-accumulation-pwa
-          entrypoint: main.ts
-          root: .
+      - name: Validate required files
+        run: |
+          test -f main.ts
+          test -f index.html
+          test -f app.js
+          test -f analysis.js
+          test -f data-provider.js
+          test -f calibration.js
+          echo "Repository validation OK"
