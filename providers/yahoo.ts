@@ -11,6 +11,20 @@ async function yahooSession(){
   if(!yahooCrumb)throw Error('Yahoo crumb kosong');
   yahooSessionAt=Date.now();
 }
+export async function yahooFetchScreener(body:string){
+  await yahooSession();
+  const base='https://query1.finance.yahoo.com/v1/finance/screener';
+  const headers={Accept:'application/json','Content-Type':'application/json','User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36',Cookie:yahooCookie};
+  const makeUrl=()=>base+'?crumb='+encodeURIComponent(yahooCrumb);
+  let r=await fetch(makeUrl(),{method:'POST',headers,body});
+  if(r.status===401||r.status===403){
+    await r.body?.cancel();yahooCookie='';yahooCrumb='';yahooSessionAt=0;
+    await yahooSession();
+    r=await fetch(makeUrl(),{method:'POST',headers:{...headers,Cookie:yahooCookie},body});
+  }
+  return r;
+}
+
 async function yahooFetch(url:string){
   await yahooSession();
   const h={Accept:'application/json','User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36',Cookie:yahooCookie};
