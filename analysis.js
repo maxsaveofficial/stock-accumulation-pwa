@@ -238,27 +238,36 @@ window.StockFlow = (() => {
 
   function backtest(series,horizon=5,lookback=20){
     const observations=[];
+    const lb=Math.max(2,Number(lookback)||20);
     series.forEach(s=>{
       const r=s.rows.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
-      for(let i=lookback;i<r.length-horizon;i++){
-        const a=analyze(r.slice(0,i+1),lookback);
+      for(let i=lb;i<r.length-horizon;i++){
+        const a=analyze(r.slice(0,i+1),lb);
         if(!a||a.signal==='NEUTRAL')continue;
-        const future=r[i+horizon].close;
-        const ret=(future/r[i].close-1)*100;
+        const entry=Number(r[i].close),future=Number(r[i+horizon].close);
+        if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(future))continue;
+        const ret=(future/entry-1)*100;
         observations.push({signal:a.signal,ret,score:a.score,confidence:a.confidence,ticker:s.ticker,date:r[i].date});
       }
     });
-    if(!observations.length)return {hitRate:null,avgReturn:null,medianReturn:null,winLossRatio:null,expectancy:null,count:0};
+    if(!observations.length)return {hitRate:null,avgReturn:null,medianReturn:null,winLossRatio:null,expectancy:null,count:0,weightedReturn:null};
     const signed=observations.map(x=>x.signal==='BUY'?x.ret:-x.ret);
     const wins=signed.filter(x=>x>0), losses=signed.filter(x=>x<=0);
     const sorted=[...signed].sort((a,b)=>a-b);
     const median=sorted.length%2?sorted[(sorted.length-1)/2]:(sorted[sorted.length/2-1]+sorted[sorted.length/2])/2;
-    const hits=wins.length;
-    const avgReturn=avg(signed);
-    const avgWin=avg(wins), avgLoss=Math.abs(avg(losses));
+    const hits=wins.length,avgReturn=avg(signed);
+    const avgWin=avg(wins),avgLoss=Math.abs(avg(losses));
     const winLossRatio=avgLoss?avgWin/avgLoss:null;
-    return {hitRate:100*hits/observations.length,avgReturn,medianReturn:median,
-      winLossRatio,expectancy:avgReturn,count:observations.length};
+    // Weighted return is a diagnostic: stronger score + confidence get more weight,
+    // while the raw average remains unchanged for transparency.
+    const weighted=observations.map((x,i)=>{
+      const strength=clamp(Number(x.score)/100)*clamp(Number(x.confidence)/100);
+      return {v:signed[i],w:Math.max(.05,strength)};
+    });
+    const wsum=sum(weighted.map(x=>x.w));
+    const weightedReturn=wsum?sum(weighted.map(x=>x.v*x.w))/wsum:null;
+    return {hitRate:100*hits/observations.length,avgReturn,medianReturn,
+      winLossRatio,expectancy:avgReturn,count:observations.length,weightedReturn};
   }
 
   return {analyze,classify,backtest,brokerMetrics};
