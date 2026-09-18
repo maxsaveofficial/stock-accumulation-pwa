@@ -15,7 +15,7 @@ async function yahooFetch(url:string){
 }
 export async function yahooOhlcv(ticker:string,from:string,to:string,name=''){
   const p1=Math.floor(new Date(`${from.slice(0,4)}-${from.slice(4,6)}-${from.slice(6,8)}T00:00:00Z`).getTime()/1000);
-  const p2=Math.floor(new Date(`${to.slice(0,4)}-${to.slice(6,8)}-${to.slice(6,8)}T23:59:59Z`).getTime()/1000)+1;
+  const p2=Math.floor(new Date(`${to.slice(0,4)}-${to.slice(4,6)}-${to.slice(6,8)}T23:59:59Z`).getTime()/1000)+1;
   const qs=`period1=${p1}&period2=${p2}&interval=1d&events=history&includeAdjustedClose=false`;
   const response=await yahooFetch(`${CHARTS[0]}/${encodeURIComponent(ticker.toUpperCase())}.JK?${qs}`);
   if(!response.ok)throw new Error(`Yahoo Finance HTTP ${response.status}`);
