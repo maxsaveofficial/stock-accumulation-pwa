@@ -7,30 +7,31 @@ on:
 
 permissions:
   contents: read
-  pages: write
   id-token: write
 
 concurrency:
-  group: pages
+  group: deno-production
   cancel-in-progress: true
 
 jobs:
   deploy:
+    name: Deploy to Deno Deploy
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
         with:
-          enablement: true
-      - name: Upload site
-        uses: actions/upload-pages-artifact@v3
+          deno-version: v2.x
+
+      - name: Type-check backend
+        run: deno check main.ts
+
+      - name: Deploy to Deno Deploy
+        uses: denoland/deployctl@v1
         with:
-          path: .
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+          project: stock-accumulation-pwa
+          entrypoint: main.ts
+          root: .
