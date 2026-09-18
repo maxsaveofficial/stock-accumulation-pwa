@@ -46,12 +46,14 @@ const result = context.window.StockFlowCalibration.walkForward(series, {
 
 if (result.observations.length !== 1) throw new Error(`expected 1 observation, got ${result.observations.length}`);
 const o = result.observations[0];
-const expectedGross = 10;
+const expectedGross = ((110 / 102) - 1) * 100;
 const expectedCost = 0.10 + 0.20 + (2 * 0.05) + 0.10;
+const expectedMAE = ((101 / 102) - 1) * 100;
+const expectedMFE = ((110 / 102) - 1) * 100;
 if (Math.abs(o.grossReturn - expectedGross) > 1e-9) throw new Error(`gross return mismatch: ${o.grossReturn}`);
 if (Math.abs(o.signedNetReturn - (expectedGross - expectedCost)) > 1e-9) throw new Error(`net return mismatch: ${o.signedNetReturn}`);
-if (Math.abs(o.mae - (-1.0)) > 1e-9) throw new Error(`MAE mismatch: ${o.mae}`);
-if (Math.abs(o.mfe - 10.0) > 1e-9) throw new Error(`MFE mismatch: ${o.mfe}`);
+if (Math.abs(o.mae - expectedMAE) > 1e-9) throw new Error(`MAE mismatch: ${o.mae}`);
+if (Math.abs(o.mfe - expectedMFE) > 1e-9) throw new Error(`MFE mismatch: ${o.mfe}`);
 if (result.costs.totalCostPct !== expectedCost) throw new Error(`cost mismatch: ${result.costs.totalCostPct}`);
 
 console.log('calibration.test.js: PASS');
