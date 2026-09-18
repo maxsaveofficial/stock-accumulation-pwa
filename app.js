@@ -147,8 +147,22 @@ async function autoLoad(){
     await loadLiveStock();
   }catch(e){
     if(provider()==='auto'&&restoreCache())return;
-    $('status').textContent='OFFLINE';
-    setLiveStatus(`Data live gagal: ${e.message} · kalkulasi lokal tetap aktif`);
+    const explicit=provider()!=='auto';
+    $('status').textContent=explicit?'LIVE ERROR':'OFFLINE';
+    setLiveStatus(explicit
+      ? `LIVE ERROR · ${provider().toUpperCase()} gagal: ${e.message} · demo tidak digunakan`
+      : `Data live gagal: ${e.message} · kalkulasi lokal tetap aktif`);
+    if(explicit){
+      data=[];
+      selectedTickers=new Set();
+      refresh();
+      $('buyTable').innerHTML='<tr><td colspan="5">Tidak ada data live. Demo data dinonaktifkan untuk provider eksplisit.</td></tr>';
+      $('sellTable').innerHTML='<tr><td colspan="5">Tidak ada data live. Demo data dinonaktifkan untuk provider eksplisit.</td></tr>';
+      $('backtest').innerHTML='<div class="btlegend"><span>Backtest menunggu data live.</span></div>';
+      $('detailBuy').innerHTML='Data live belum tersedia.';
+      $('detailSell').innerHTML='Data live belum tersedia.';
+      return;
+    }
     render();
   }
 }
