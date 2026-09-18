@@ -44,8 +44,13 @@ function render(){
       $('buyTable').innerHTML=table(o.buy,'BUY');
       $('sellTable').innerHTML=table(o.sell,'SELL');
       bindRows();
-      if(s!=='ALL')detail(s);
-      else $('detail').innerHTML='Klik saham pada Pareto untuk melihat detail.';
+      if(s!=='ALL'){
+        const zone=o.buy.some(x=>x.ticker===s)?'buy':o.sell.some(x=>x.ticker===s)?'sell':'buy';
+        detail(s,zone);
+      }else{
+        $('detailBuy').innerHTML='Klik saham BUY untuk melihat detail.';
+        $('detailSell').innerHTML='Klik saham SELL untuk melihat detail.';
+      }
       
       setTimeout(async()=>{
         if(seq!==renderSeq)return;
@@ -121,7 +126,8 @@ function render(){
     }catch(e){
       $('buyTable').innerHTML=`<tr><td colspan="5">Signal error: ${esc(e.message)}</td></tr>`;
       $('sellTable').innerHTML=`<tr><td colspan="5">Signal error: ${esc(e.message)}</td></tr>`;
-      $('detail').innerHTML='<div>Data berhasil masuk, tetapi engine signal gagal diproses.</div>';
+      $('detailBuy').innerHTML='<div>Data berhasil masuk, tetapi engine signal gagal diproses.</div>';
+      $('detailSell').innerHTML='<div>Data berhasil masuk, tetapi engine signal gagal diproses.</div>';
       console.error('[RENDER]',e);
     }
   },0);
