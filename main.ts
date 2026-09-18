@@ -113,7 +113,20 @@ async function stock(ticker: string, from: string, to: string, provider = config
   const cached = stockCache.get(key);
   if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.data;
   const prices = await ohlcv(ticker, from, to, provider);
-  const brokerRows = await broker(to, ticker, provider);
+  let brokerRows: unknown[] = [];
+  // Align broker flow with the same historical trading dates as OHLCV.
+  // The previous implementation fetched only the final date, which made
+  // persistence/rotation unavailable in live analysis.
+  if (provider === 'indexalpha' || (provider === 'auto' && hasIndexAlphaKey())) {
+    const dates = [...new Set(prices.map((r: any) => String(r.date)).filter(Boolean))].slice(-20);
+    for (let i = 0; i < dates.length; i += 5) {
+      const chunk = dates.slice(i, i + 5);
+      const batch = await Promise.all(chunk.map(date => broker(date.replaceAll('-', ''), ticker, 'indexalpha')));
+      brokerRows.push(...batch.flat());
+    }
+  } else {
+    brokerRows = await broker(to, ticker, provider);
+  }
   const result = { ticker: ticker.toUpperCase(), from, to, prices, broker: brokerRows };
   stockCache.set(key, { at: Date.now(), data: result });
   return result;

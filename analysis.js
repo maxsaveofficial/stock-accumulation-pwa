@@ -161,25 +161,37 @@ window.StockFlow = (() => {
     const volumeScore=clamp(50+25*Math.log2(Math.max(volRatio,0.25)));
     const pvBull=priceMovePct>0?volumeScore:priceMovePct<0?100-volumeScore:50;
 
+    // V3: accumulation and distribution are modeled independently.
+    // Distribution is NOT simply 100 - accumulation; that caused bearish
+    // evidence to be diluted when unrelated bullish factors were present.
+    const candleRange=Math.max(last.high-last.low,1e-9);
+    const closeLocation=(last.close-last.low)/candleRange; // 0 = close at low
+    const bearishVolume=last.close<last.open&&volRatio>=1 ? clamp(50+25*(volRatio-1)) : 25;
+    const bullishVolume=last.close>last.open&&volRatio>=1 ? clamp(50+25*(volRatio-1)) : 25;
+    const rejection=last.high>resistance && last.close<resistance
+      ? clamp(70+15*Math.min((last.high-resistance)/Math.max(atr,1e-9),2))
+      : clamp(50-closeLocation*20);
+    const supportWeakness=clamp(50-(supportDist*12)+(trend<45?18:0));
+    const flowDivergenceBull=bm.available && bm.netBias>=55 && priceMovePct<=0 ? 80 : 50;
+    const flowDivergenceBear=bm.available && bm.netBias<=45 && priceMovePct>=0 ? 80 : 50;
+    const accumulationEvidence=[
+      mfNorm, pressure, volumeScore, pvBull, trend, supportScore,
+      brokerScore, absorption, flowDivergenceBull
+    ];
+    const distributionEvidence=[
+      100-mfNorm, 100-pressure, bearishVolume, 100-pvBull,
+      100-trend, supportWeakness, 100-brokerScore, rejection,
+      flowDivergenceBear
+    ];
     const acc=clamp(
-      .20*mfNorm+
-      .12*pressure+
-      .10*volumeScore+
-      .12*pvBull+
-      .13*trend+
-      .10*supportScore+
-      .18*brokerScore+
-      .05*absorption
+      .16*mfNorm+.13*pressure+.08*bullishVolume+.10*pvBull+
+      .13*trend+.10*supportScore+.18*brokerScore+.07*absorption+
+      .05*flowDivergenceBull
     );
     const dist=clamp(
-      .20*(100-mfNorm)+
-      .12*(100-pressure)+
-      .10*(100-volumeScore)+
-      .12*(100-pvBull)+
-      .13*(100-trend)+
-      .10*(100-supportScore)+
-      .18*(100-brokerScore)+
-      .05*(100-absorption)
+      .14*(100-mfNorm)+.14*(100-pressure)+.12*bearishVolume+
+      .10*(100-pvBull)+.10*(100-trend)+.10*supportWeakness+
+      .18*(100-brokerScore)+.07*rejection+.05*flowDivergenceBear
     );
 
     const breakdown=clamp(
@@ -188,8 +200,8 @@ window.StockFlow = (() => {
       (trend<35?20:0)+
       (supportDist<0?25:0)
     );
-    const signal=acc>=68&&dist<55&&chasePenalty<35?'BUY':
-      dist>=68&&acc<55?'SELL':'NEUTRAL';
+    const signal=acc>=68&&dist<58&&chasePenalty<35?'BUY':
+      dist>=65&&acc<58?'SELL':'NEUTRAL';
     const score=signal==='BUY'?acc:signal==='SELL'?dist:Math.max(acc,dist);
 
     // Confidence measures agreement of independent evidence and data quality.
