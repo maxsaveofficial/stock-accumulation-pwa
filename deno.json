@@ -4,5 +4,11 @@
   },
   "compilerOptions": {
     "strict": true
+  },
+  "deploy": {
+    "runtime": {
+      "type": "dynamic",
+      "entrypoint": "main.ts"
+    }
   }
 }
