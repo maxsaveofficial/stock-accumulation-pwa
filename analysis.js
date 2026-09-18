@@ -1,30 +1,36 @@
 window.StockFlow = (() => {
   const clamp=(x,a=0,b=100)=>Math.max(a,Math.min(b,x));
-  const avg=(a)=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0;
+  const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0;
+  const sum=a=>a.reduce((s,x)=>s+x,0);
   const sma=(a,n)=>a.length<n?null:avg(a.slice(-n));
   const pct=(a,b)=>b?((a/b)-1)*100:0;
-  const sign=(x)=>x>0?1:x<0?-1:0;
+  const sign=x=>x>0?1:x<0?-1:0;
+  const finite=x=>Number.isFinite(Number(x))?Number(x):0;
 
-  // Broker data is treated as a flow signal only. The engine does not infer
-  // whether a broker represents retail, institution, foreign, etc.
-  function brokerMetrics(rows, windowSize=10){
+  // V2: broker flow is evidence of broker-level trading flow, not proof of
+  // "smart money". The engine scores persistence, consistency, divergence,
+  // concentration and rotation rather than treating one-day net flow as enough.
+  function brokerMetrics(rows,windowSize=10){
     const recent=rows.slice(-windowSize);
     const sessions=recent.map(r=>({
       date:r.date,
       brokers:Array.isArray(r.brokers)?r.brokers:(Array.isArray(r.brokerDetails)?r.brokerDetails:[])
     })).filter(x=>x.brokers.length);
-    if(!sessions.length)return {available:false,netValue:0,persistence3:50,persistence5:50,persistence10:50,concentration:0,consistency:50,divergence:50,rotation:50,score:50};
+    if(!sessions.length)return {
+      available:false,netValue:0,persistence3:50,persistence5:50,persistence10:50,
+      concentration:0,consistency:50,divergence:50,rotation:50,score:50,netBias:50,
+      activeBrokers:0
+    };
 
-    const nets=sessions.map(s=>s.brokers.reduce((sum,b)=>sum+(Number(b.buyValue)||0)-(Number(b.sellValue)||0),0));
+    const nets=sessions.map(s=>sum(s.brokers.map(b=>finite(b.buyValue)-finite(b.sellValue))));
     const totalNet=avg(nets);
-    const positiveRatio=nets.length?nets.filter(x=>x>0).length/nets.length:0.5;
-    const last3=nets.slice(-3), last5=nets.slice(-5);
-    const persistence3=last3.length?100*last3.filter(x=>x>0).length/last3.length:50;
-    const persistence5=last5.length?100*last5.filter(x=>x>0).length/last5.length:50;
+    const positiveRatio=avg(nets.map(x=>x>0?1:x<0?0:.5));
+    const persistence3=100*avg(nets.slice(-3).map(x=>x>0?1:x<0?0:.5));
+    const persistence5=100*avg(nets.slice(-5).map(x=>x>0?1:x<0?0:.5));
     const persistence10=100*positiveRatio;
 
-    const latest=sessions[sessions.length-1].brokers.map(b=>({...b,net:(Number(b.buyValue)||0)-(Number(b.sellValue)||0)}));
-    const absTotal=latest.reduce((s,b)=>s+Math.abs(b.net),0);
+    const latest=sessions[sessions.length-1].brokers.map(b=>({...b,net:finite(b.buyValue)-finite(b.sellValue)}));
+    const absTotal=sum(latest.map(b=>Math.abs(b.net)));
     const top=Math.max(0,...latest.map(b=>Math.abs(b.net)));
     const concentration=absTotal?100*top/absTotal:0;
 
@@ -32,69 +38,186 @@ window.StockFlow = (() => {
     sessions.forEach(s=>s.brokers.forEach(b=>{
       const id=String(b.broker||b.code||'').trim();
       if(!id)return;
-      if(!brokerStats[id])brokerStats[id]={pos:0,neg:0,net:0,sessions:0};
-      const net=(Number(b.buyValue)||0)-(Number(b.sellValue)||0);
+      if(!brokerStats[id])brokerStats[id]={pos:0,neg:0,flat:0,net:0,sessions:0};
+      const net=finite(b.buyValue)-finite(b.sellValue);
       brokerStats[id].net+=net; brokerStats[id].sessions++;
-      if(net>0)brokerStats[id].pos++; else if(net<0)brokerStats[id].neg++;
+      if(net>0)brokerStats[id].pos++; else if(net<0)brokerStats[id].neg++; else brokerStats[id].flat++;
     }));
     const active=Object.values(brokerStats);
-    const consistency=active.length?100*avg(active.map(x=>Math.max(x.pos,x.neg)/Math.max(x.sessions,1))):50;
+    const consistency=active.length
+      ?100*avg(active.map(x=>Math.max(x.pos,x.neg)/Math.max(x.sessions-x.flat,1)))
+      :50;
 
     const priceRows=rows.slice(-Math.min(windowSize+1,rows.length));
-    const priceMove=priceRows.length>1?pct(priceRows[priceRows.length-1].close,priceRows[0].close):0;
+    const priceMove=priceRows.length>1?pct(priceRows.at(-1).close,priceRows[0].close):0;
     const flowSign=sign(totalNet);
-    // Positive flow while price is flat/down => accumulation divergence.
-    // Negative flow while price is flat/up => distribution divergence.
     let divergence=50;
-    if(flowSign>0) divergence=clamp(50 + Math.max(0,-priceMove)*4);
-    if(flowSign<0) divergence=clamp(50 + Math.max(0,priceMove)*4);
+    if(flowSign>0)divergence=clamp(50+Math.max(0,-priceMove)*5);
+    if(flowSign<0)divergence=clamp(50+Math.max(0,priceMove)*5);
+    // Divergence is deliberately capped; a 10% price move is already a strong
+    // condition and should not single-handedly dominate the score.
 
     const previous=sessions.length>3?sessions.slice(0,-3):[];
-    const latestTop=new Set(latest.filter(b=>b.net!==0).sort((a,b)=>Math.abs(b.net)-Math.abs(a.net)).slice(0,3).map(b=>String(b.broker||b.code||'')));
-    const prevMap={}; previous.forEach(s=>s.brokers.forEach(b=>{const id=String(b.broker||b.code||'');if(id)prevMap[id]=(prevMap[id]||0)+Math.abs((Number(b.buyValue)||0)-(Number(b.sellValue)||0));}));
+    const latestTop=new Set(latest.filter(b=>b.net!==0)
+      .sort((a,b)=>Math.abs(b.net)-Math.abs(a.net)).slice(0,3)
+      .map(b=>String(b.broker||b.code||'')));
+    const prevMap={};
+    previous.forEach(s=>s.brokers.forEach(b=>{
+      const id=String(b.broker||b.code||'').trim(); if(!id)return;
+      prevMap[id]=(prevMap[id]||0)+Math.abs(finite(b.buyValue)-finite(b.sellValue));
+    }));
     const prevTop=new Set(Object.entries(prevMap).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]));
     const overlap=[...latestTop].filter(x=>prevTop.has(x)).length;
     const rotation=latestTop.size&&prevTop.size?100*(1-overlap/Math.max(latestTop.size,prevTop.size)):50;
 
-    const netScale=latest.reduce((s,b)=>s+Math.abs(b.net),0)||1;
-    const netBias=clamp(50+50*(latest.reduce((s,b)=>s+b.net,0)/netScale));
+    const netScale=absTotal||1;
+    const latestNet=sum(latest.map(b=>b.net));
+    const netBias=clamp(50+50*latestNet/netScale);
     const persistenceBias=avg([persistence3,persistence5,persistence10]);
-    const divergenceBias=flowSign>0?divergence:(100-divergence);
-    const score=clamp(.35*netBias+.25*persistenceBias+.20*divergenceBias+.10*consistency+.10*(100-concentration/2));
-    return {available:true,netValue:totalNet,persistence3,persistence5,persistence10,concentration,consistency,divergence,rotation,score,netBias};
+    const divergenceBias=flowSign>0?divergence:flowSign<0?100-divergence:50;
+    const concentrationPenalty=clamp((concentration-33.33)*1.5,0,50);
+    const score=clamp(
+      .35*netBias+
+      .25*persistenceBias+
+      .20*divergenceBias+
+      .10*consistency+
+      .10*(100-concentrationPenalty)
+    );
+    return {available:true,netValue:totalNet,persistence3,persistence5,persistence10,
+      concentration,consistency,divergence,rotation,score,netBias,activeBrokers:active.length};
   }
 
-  function analyze(rows, lookback=20){
+  function trueRange(r,i){
+    const x=r[i], prev=i>0?r[i-1].close:x.open;
+    return Math.max(x.high-x.low,Math.abs(x.high-prev),Math.abs(x.low-prev));
+  }
+
+  function analyze(rows,lookback=20){
     const r=rows.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
     if(r.length<2)return null;
-    const n=Math.min(lookback,r.length), w=r.slice(-n), last=w[w.length-1];
-    const ranges=w.map(x=>Math.max(x.high-x.low,Math.abs(x.high-x.close),Math.abs(x.low-x.close)));
-    const atr=avg(ranges), avgVol=avg(w.map(x=>x.volume||0)), volRatio=avgVol?last.volume/avgVol:1;
-    const clv=w.map(x=>x.high===x.low?0:((x.close-x.low)-(x.high-x.close))/(x.high-x.low));
-    const mf=avg(w.map((x,i)=>clv[i]*(x.volume||0)));
-    const mfNorm=avgVol?clamp(50+50*(mf/avgVol)):50;
-    const upVol=w.filter(x=>x.close>=x.open).reduce((s,x)=>s+(x.volume||0),0), downVol=w.filter(x=>x.close<x.open).reduce((s,x)=>s+(x.volume||0),0);
+    const closes=r.map(x=>finite(x.close)), n=Math.min(lookback,r.length), w=r.slice(-n), last=w.at(-1);
+    const start=Math.max(0,r.length-n);
+    const ranges=w.map((_,i)=>trueRange(r,start+i));
+    const atr=avg(ranges)||Math.max(last.high-last.low,1);
+    // Exclude the current bar from the volume baseline so a volume spike is
+    // not diluted by its own abnormal volume.
+    const baselineVol=w.length>1?avg(w.slice(0,-1).map(x=>finite(x.volume))):finite(last.volume);
+    const volRatio=baselineVol>0?finite(last.volume)/baselineVol:1;
+
+    // Money flow uses CLV x volume and is normalized by the average absolute
+    // CLV-volume contribution, preventing a few high-volume bars from exploding.
+    const mfVals=w.map(x=>{
+      const h=finite(x.high), l=finite(x.low), c=finite(x.close);
+      const clv=h===l?0:((c-l)-(h-c))/(h-l);
+      return clv*finite(x.volume);
+    });
+    const mfScale=avg(w.map(x=>Math.abs(finite(x.volume))))||1;
+    const mfNorm=clamp(50+50*avg(mfVals)/mfScale);
+
+    // Up/down volume pressure is centered on candle direction, with dojis
+    // contributing half to avoid an arbitrary bullish classification.
+    const upVol=sum(w.map(x=>x.close>x.open?finite(x.volume):x.close===x.open?0.5*finite(x.volume):0));
+    const downVol=sum(w.map(x=>x.close<x.open?finite(x.volume):x.close===x.open?0.5*finite(x.volume):0));
     const pressure=upVol+downVol?100*upVol/(upVol+downVol):50;
-    const sma5=sma(r.map(x=>x.close),5), sma20=sma(r.map(x=>x.close),20), sma60=sma(r.map(x=>x.close),60);
-    const trend=clamp(50 + (sma20?25*(last.close/sma20-1)*100:0) + (sma60?15*(last.close/sma60-1)*100:0));
-    const recent=w.slice(0,-1), support=recent.length?Math.min(...recent.map(x=>x.low)):last.low, resistance=recent.length?Math.max(...recent.map(x=>x.high)):last.high;
-    const supportDist=atr?((last.close-support)/atr):0, resistanceDist=atr?((resistance-last.close)/atr):0;
-    const supportScore=clamp(100-Math.abs(supportDist)*30), chasePenalty=clamp(Math.max(0,(last.close-resistance)/Math.max(atr,.000001))*30);
+
+    const sma5=sma(closes,5), sma20=sma(closes,20), sma60=sma(closes,60);
+    const atrPct=last.close?atr/last.close*100:0;
+    const dist20=sma20?((last.close/sma20)-1)*100:0;
+    const dist60=sma60?((last.close/sma60)-1)*100:0;
+    const slope5=sma5&&closes.length>=10?pct(sma5,sma(closes.slice(0,-5),5)||sma5):0;
+    const slope20=sma20&&closes.length>=40?pct(sma20,sma(closes.slice(0,-20),20)||sma20):0;
+    // Volatility-adjusted trend: price distance and moving-average slope are
+    // expressed in ATR units, making the score comparable across stocks.
+    const trendRaw=50+
+      (dist20/(Math.max(atrPct,0.1)))*10+
+      (dist60/(Math.max(atrPct,0.1)))*6+
+      (slope5/Math.max(atrPct,0.1))*4+
+      (slope20/Math.max(atrPct,0.1))*5;
+    const trend=clamp(trendRaw);
+
+    // Structure-based support/resistance from recent swing extrema, excluding
+    // the current bar. ATR distance prevents tiny absolute gaps from looking safe.
+    const recent=w.slice(0,-1);
+    const support=recent.length?Math.min(...recent.map(x=>finite(x.low))):finite(last.low);
+    const resistance=recent.length?Math.max(...recent.map(x=>finite(x.high))):finite(last.high);
+    const supportDist=atr?(last.close-support)/atr:0;
+    const resistanceDist=atr?(resistance-last.close)/atr:0;
+    const supportScore=clamp(100-Math.abs(supportDist)*18);
+    const breakoutPressure=clamp(resistanceDist<=0?100:(100-resistanceDist*18));
+    const chasePenalty=clamp(Math.max(0,(last.close-resistance)/Math.max(atr,0.000001))*25);
 
     const bm=brokerMetrics(r,10);
     const brokerNet=last.brokerNetValue;
-    const legacyBrokerScore=brokerNet==null?50:clamp(50+(brokerNet/Math.max(Math.abs(last.value||last.volume*last.close),1))*50);
-    const brokerScore=bm.available?clamp(.8*bm.score+.2*legacyBrokerScore):legacyBrokerScore;
+    const legacyBrokerScore=brokerNet==null?50:
+      clamp(50+(finite(brokerNet)/Math.max(Math.abs(finite(last.value)||finite(last.volume)*finite(last.close)),1))*50);
+    const brokerScore=bm.available?clamp(.85*bm.score+.15*legacyBrokerScore):legacyBrokerScore;
 
-    const acc=clamp(.24*mfNorm+.15*pressure+.14*clamp(volRatio*50)+.15*trend+.12*supportScore+.20*brokerScore);
-    const dist=clamp(.24*(100-mfNorm)+.15*(100-pressure)+.14*clamp((2-volRatio)*50)+.15*(100-trend)+.12*(100-supportScore)+.20*(100-brokerScore));
-    const breakdown=clamp((last.close<support?70:0)+(volRatio>1.5&&last.close<last.open?25:0)+(trend<35?20:0));
-    const signal=acc>=68&&dist<55&&chasePenalty<35?'BUY':dist>=68&&acc<55?'SELL':'NEUTRAL';
+    // Price-volume efficiency: large volume with little price progress is
+    // absorption/possible supply rather than automatic accumulation.
+    const prevClose=w.length>1?w[w.length-2].close:last.open;
+    const priceMovePct=prevClose?pct(last.close,prevClose):0;
+    const efficiency=volRatio>0?Math.abs(priceMovePct)/volRatio:0;
+    const absorption=clamp(100-efficiency*25);
+    const volumeScore=clamp(50+25*Math.log2(Math.max(volRatio,0.25)));
+    const pvBull=priceMovePct>0?volumeScore:priceMovePct<0?100-volumeScore:50;
+
+    const acc=clamp(
+      .20*mfNorm+
+      .12*pressure+
+      .10*volumeScore+
+      .12*pvBull+
+      .13*trend+
+      .10*supportScore+
+      .18*brokerScore+
+      .05*absorption
+    );
+    const dist=clamp(
+      .20*(100-mfNorm)+
+      .12*(100-pressure)+
+      .10*(100-volumeScore)+
+      .12*(100-pvBull)+
+      .13*(100-trend)+
+      .10*(100-supportScore)+
+      .18*(100-brokerScore)+
+      .05*(100-absorption)
+    );
+
+    const breakdown=clamp(
+      (last.close<support?55:0)+
+      (volRatio>1.5&&last.close<last.open?25:0)+
+      (trend<35?20:0)+
+      (supportDist<0?25:0)
+    );
+    const signal=acc>=68&&dist<55&&chasePenalty<35?'BUY':
+      dist>=68&&acc<55?'SELL':'NEUTRAL';
     const score=signal==='BUY'?acc:signal==='SELL'?dist:Math.max(acc,dist);
-    return {ticker:last.ticker||'',date:last.date,price:last.close,acc,dist,score,signal,volRatio,trend,pressure,mfNorm,breakdown,brokerScore,chasePenalty,atr,support,resistance,broker:bm};
+
+    // Confidence measures agreement of independent evidence and data quality.
+    const evidence=[mfNorm,pressure,volumeScore,pvBull,trend,supportScore,brokerScore];
+    const mean=avg(evidence);
+    const dispersion=avg(evidence.map(x=>Math.abs(x-mean)));
+    const agreement=clamp(100-dispersion*1.6);
+    const dataQuality=clamp(70+(bm.available?20:0)+(r.length>=60?10:r.length>=20?7:0));
+    const confidence=clamp(.65*agreement+.35*dataQuality);
+
+    let pattern='NEUTRAL';
+    if(brokerScore>=65&&priceMovePct<=0&&volRatio>=1)pattern='ABSORPTION';
+    if(brokerScore>=65&&trend<55&&priceMovePct<=2&&persistencePositive(bm))pattern='QUIET ACCUMULATION';
+    if(brokerScore<=35&&priceMovePct>=0&&volRatio>=1)pattern='DISTRIBUTION';
+    if(volRatio>=1.5&&last.close>resistance)pattern='MARKUP / BREAKOUT';
+    if(breakdown>=55)pattern='BREAKDOWN RISK';
+
+    return {ticker:last.ticker||'',date:last.date,price:last.close,acc,dist,score,signal,
+      confidence,dataQuality,pattern,volRatio,volumeScore,pressure,mfNorm,pvBull,absorption,
+      trend,trendSlope5:slope5,trendSlope20:slope20,breakdown,brokerScore,chasePenalty,
+      atr,atrPct,support,resistance,supportDist,resistanceDist,broker:bm};
   }
 
-  function classify(all, horizon=5){
+  function persistencePositive(bm){
+    return bm&&avg([bm.persistence3,bm.persistence5,bm.persistence10])>=60;
+  }
+
+  function classify(all,horizon=5){
     const results=all.map(s=>{const a=analyze(s.rows,s.lookback||20);return a?{...a,ticker:s.ticker}:null}).filter(Boolean);
     const buy=results.filter(x=>x.signal==='BUY').sort((a,b)=>b.score-a.score).slice(0,5);
     const sell=results.filter(x=>x.signal==='SELL').sort((a,b)=>b.score-a.score).slice(0,5);
@@ -103,10 +226,28 @@ window.StockFlow = (() => {
 
   function backtest(series,horizon=5,lookback=20){
     const observations=[];
-    series.forEach(s=>{const r=s.rows.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)); for(let i=lookback;i<r.length-horizon;i++){const a=analyze(r.slice(0,i+1),lookback); if(!a||a.signal==='NEUTRAL')continue; const future=r[i+horizon].close, ret=(future/r[i].close-1)*100; observations.push({signal:a.signal,ret});}});
-    if(!observations.length)return {hitRate:null,avgReturn:null,count:0};
-    const hits=observations.filter(x=>x.signal==='BUY'?x.ret>0:x.ret<0).length;
-    return {hitRate:100*hits/observations.length,avgReturn:avg(observations.map(x=>x.signal==='BUY'?x.ret:-x.ret)),count:observations.length};
+    series.forEach(s=>{
+      const r=s.rows.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+      for(let i=lookback;i<r.length-horizon;i++){
+        const a=analyze(r.slice(0,i+1),lookback);
+        if(!a||a.signal==='NEUTRAL')continue;
+        const future=r[i+horizon].close;
+        const ret=(future/r[i].close-1)*100;
+        observations.push({signal:a.signal,ret,score:a.score,confidence:a.confidence,ticker:s.ticker,date:r[i].date});
+      }
+    });
+    if(!observations.length)return {hitRate:null,avgReturn:null,medianReturn:null,winLossRatio:null,expectancy:null,count:0};
+    const signed=observations.map(x=>x.signal==='BUY'?x.ret:-x.ret);
+    const wins=signed.filter(x=>x>0), losses=signed.filter(x=>x<=0);
+    const sorted=[...signed].sort((a,b)=>a-b);
+    const median=sorted.length%2?sorted[(sorted.length-1)/2]:(sorted[sorted.length/2-1]+sorted[sorted.length/2])/2;
+    const hits=wins.length;
+    const avgReturn=avg(signed);
+    const avgWin=avg(wins), avgLoss=Math.abs(avg(losses));
+    const winLossRatio=avgLoss?avgWin/avgLoss:null;
+    return {hitRate:100*hits/observations.length,avgReturn,medianReturn:median,
+      winLossRatio,expectancy:avgReturn,count:observations.length};
   }
+
   return {analyze,classify,backtest,brokerMetrics};
 })();
