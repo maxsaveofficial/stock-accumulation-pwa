@@ -17,10 +17,9 @@ async function yahooUniverse(){
   if(yahooUniverseCache&&Date.now()-yahooUniverseCache.at<3600000)return yahooUniverseCache.data;
   const out:{ticker:string;name:string}[]=[];
   for(let offset=0;offset<2000;offset+=250){
-    const payload={offset,count:250,sortField:'ticker',sortType:'ASC',query:{operator:'AND',operands:[
+    const payload={offset,size:250,sortField:'ticker',sortType:'ASC',quoteType:'EQUITY',userId:'',userIdType:'guid',query:{operator:'AND',operands:[
       {operator:'EQ',operands:['region','id']},
-      {operator:'EQ',operands:['exchange','JKT']},
-      {operator:'EQ',operands:['quoteType','EQUITY']}
+      {operator:'EQ',operands:['exchanges','JKT']}
     ]}};
     const body=JSON.stringify(payload); let r=await yahooFetchScreener(body);
     if(!r.ok)throw Error(`Yahoo screener HTTP ${r.status}`);
