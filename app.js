@@ -60,24 +60,41 @@ function render(){
           const ret=Number(x?.total?.avgReturn),hit=Number(x?.total?.hitRate),count=Number(x?.total?.count||0);
           results.push({h,ret,hit,count});
           const st=stats.querySelector('[data-horizon="'+h+'"]');
-          if(st)st.innerHTML='<small>T+'+h+'</small><b>'+(Number.isFinite(ret)?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':'No signal · '+count+' signal')+'</span>';
+          if(st)st.innerHTML='<small>T+'+h+'</small><b>'+(Number.isFinite(ret)?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':count+' signal')+'</span>';
+
           const valid=results.filter(x=>Number.isFinite(x.ret));
-          if(valid.length){
-            const best=valid.reduce((a,b)=>b.ret>a.ret?b:a,valid[0]);
+          const best=valid.length?valid.reduce((a,b)=>b.ret>a.ret?b:a,valid[0]):null;
+          const C=2*Math.PI*62;
+          segRoot.innerHTML='';
+          if(best){
             $('btBestT').textContent='T+'+best.h;
             $('btBestRet').textContent=fmt(best.ret,2)+'% avg return';
-            const min=Math.min(...valid.map(x=>x.ret)),max=Math.max(...valid.map(x=>x.ret));
-            const eps=0.01, weights=valid.map(x=>Math.max(eps,x.ret-min+eps)),sum=weights.reduce((a,b)=>a+b,0);
-            segRoot.innerHTML='';let offset=0;
-            valid.forEach((x,i)=>{
-              const pct=weights[i]/sum*100;
-              const path=document.createElementNS('http://www.w3.org/2000/svg','circle');
-              path.setAttribute('cx','90');path.setAttribute('cy','90');path.setAttribute('r','62');path.setAttribute('pathLength','100');
-              path.setAttribute('class','btdonutseg '+(x.h===best.h?'btbest':''));
-              path.style.strokeDasharray=pct+' '+(100-pct);
-              path.style.strokeDashoffset=-offset;
-              path.setAttribute('aria-label','T+'+x.h+' '+fmt(x.ret,2)+'%');
-              segRoot.appendChild(path);offset+=pct;
+            const min=Math.min(...valid.map(x=>x.ret));
+            const weighted=valid.map(x=>({...x,weight:Math.max(0.05,x.ret-min+0.05)}));
+            const sum=weighted.reduce((a,x)=>a+x.weight,0);
+            let used=0;
+            weighted.forEach(x=>{
+              const pct=x.weight/sum*100;
+              const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+              circle.setAttribute('cx','90');circle.setAttribute('cy','90');circle.setAttribute('r','62');
+              circle.setAttribute('class','btdonutseg '+(x.h===best.h?'btbest':''));
+              circle.style.strokeDasharray=(C*pct/100)+' '+(C*(1-pct/100));
+              circle.style.strokeDashoffset=-(C*used/100);
+              circle.setAttribute('aria-label','T+'+x.h+' '+fmt(x.ret,2)+'%');
+              segRoot.appendChild(circle);
+              used+=pct;
+            });
+          }else{
+            $('btBestT').textContent='—';
+            $('btBestRet').textContent='belum ada signal';
+            horizons.forEach((h,i)=>{
+              const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+              circle.setAttribute('cx','90');circle.setAttribute('cy','90');circle.setAttribute('r','62');
+              circle.setAttribute('class','btdonutseg btplaceholder');
+              circle.style.strokeDasharray=(C/5-3)+' '+(C-C/5+3);
+              circle.style.strokeDashoffset=-(C*i/5);
+              circle.setAttribute('aria-label','T+'+h+' belum ada signal');
+              segRoot.appendChild(circle);
             });
           }
         };
