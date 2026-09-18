@@ -1,7 +1,7 @@
 import { brokerSummary as indexAlphaBrokerSummary, ohlcv as indexAlphaOhlcv } from './providers/indexalpha.ts';
-import { yahooOhlcv, yahooFetchScreener } from './providers/yahoo.ts';
+import { yahooOhlcv } from './providers/yahoo.ts';
 
-import { remoteCsvRange } from './providers/remote-csv.ts';
+import { remoteCsvDay, remoteCsvRange } from './providers/remote-csv.ts';
 const IDX_HOME='https://www.idx.co.id/id';
 const IDX_STOCK_SUMMARY='https://www.idx.co.id/primary/TradingSummary/GetStockSummary';
 const IDX_BROKER_SUMMARY='https://www.idx.co.id/primary/TradingSummary/GetBrokerSummary';
@@ -16,22 +16,21 @@ let yahooUniverseCache:{at:number;data:{ticker:string;name:string}[]}|null=null;
 async function yahooUniverse(){
   if(yahooUniverseCache&&Date.now()-yahooUniverseCache.at<3600000)return yahooUniverseCache.data;
   const out:{ticker:string;name:string}[]=[];
-  for(let offset=0;offset<2000;offset+=250){
-    const payload={offset,size:250,sortField:'ticker',sortType:'ASC',quoteType:'EQUITY',userId:'',userIdType:'guid',query:{operator:'AND',operands:[
-      {operator:'EQ',operands:['region','id']},
-      {operator:'EQ',operands:['exchanges','JKT']}
-    ]}};
-    const body=JSON.stringify(payload); let r=await yahooFetchScreener(body);
-    if(!r.ok)throw Error(`Yahoo screener HTTP ${r.status}`);
-    const j=await r.json(),qs=j?.finance?.result?.[0]?.quotes??[];
-    for(const q of qs){
-      const symbol=String(q.symbol||'').toUpperCase().replace(/\.JK$/,'');
-      if(symbol)out.push({ticker:symbol,name:String(q.longName||q.shortName||q.displayName||symbol)});
-    }
-    if(qs.length<250)break;
+  const now=new Date();
+  for(let back=0;back<10;back++){
+    const d=new Date(now.getTime()-back*86400000);
+    const ds=d.toISOString().slice(0,10).replaceAll('-','');
+    try{
+      const rows=await remoteCsvDay(ds);
+      for(const x of rows){
+        const ticker=String(x.ticker||'').toUpperCase();
+        if(ticker)out.push({ticker,name:ticker});
+      }
+      if(out.length>=500)break;
+    }catch(e){if(!String(e).includes('HTTP 404'))console.warn('[YAHOO UNIVERSE]',ds,String(e))}
   }
   const uniq=[...new Map(out.map(x=>[x.ticker,x])).values()];
-  if(!uniq.length)throw Error('Yahoo screener returned no Indonesia equities');
+  if(!uniq.length)throw Error('IDX-derived CSV returned no Indonesia equities');
   yahooUniverseCache={at:Date.now(),data:uniq};
   return uniq;
 }
