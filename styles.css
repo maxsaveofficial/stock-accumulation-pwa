@@ -7,3 +7,5 @@ header{padding-top:max(13px,calc(env(safe-area-inset-top) + 7px));}
 @media(max-width:650px){.controls{grid-template-columns:1.35fr .65fr;gap:7px}.controls .stockpicker,.controls .lookbackpicker{min-width:0}.controls .providerpicker{grid-column:1/-1}.controls .stockpicker select,.controls .lookbackpicker select{font-size:11px;padding-left:6px;padding-right:4px}.controls .stockpicker label,.controls .lookbackpicker label{font-size:9px}}
 .app-log{background:#f9fafb;color:#6b7280;padding:10px 14px}.app-log>div{display:flex;flex-direction:column;gap:3px}.app-log b{font-size:9px;letter-spacing:.04em}.app-log small{font-size:10px}.app-log footer{margin-top:7px;padding-top:7px;border-top:1px solid #e5e7eb;font-size:9px;color:#9ca3af;text-align:center}
 .source-text{display:none!important}
+
+.condition-guide{display:flex;flex-wrap:wrap;gap:5px 14px;margin:-3px 0 10px;color:#6b7280;font-size:10px;line-height:1.35}.condition-guide b{color:#374151}.condition-guide.single{display:block;margin:-3px 0 9px}.detail-guide{margin:0 0 9px;padding:7px 9px;background:#f9fafb;border-radius:9px}@media(max-width:650px){.condition-guide{gap:4px 10px;font-size:9px}}
