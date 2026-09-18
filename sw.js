@@ -1,4 +1,4 @@
-const CACHE='stock-flow-v14';
+const CACHE='stock-flow-v15';
 const ASSETS=['./','./index.html','./styles.css','./analysis.js','./data-provider.js','./calibration.js','./app.js','./manifest.webmanifest','./icon.svg'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
