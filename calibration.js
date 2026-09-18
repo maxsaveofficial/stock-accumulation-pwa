@@ -28,9 +28,9 @@ window.StockFlowCalibration = (() => {
       medianReturn: median(signed),
       winLossRatio: avgWin != null && avgLoss ? avgWin / avgLoss : null,
       expectancy: avg(signed),
-      avgMAE: avg(obs.map(x => x.mae).filter(Number.isFinite)),
+      avgMAE: avg(obs.map(x => Math.abs(x.mae)).filter(Number.isFinite)),
       avgMFE: avg(obs.map(x => x.mfe).filter(Number.isFinite)),
-      worstMAE: obs.length ? Math.min(...obs.map(x => x.mae).filter(Number.isFinite)) : null,
+      worstMAE: obs.length ? Math.max(...obs.map(x => Math.abs(x.mae)).filter(Number.isFinite)) : null,
       bestMFE: obs.length ? Math.max(...obs.map(x => x.mfe).filter(Number.isFinite)) : null
     };
   }
@@ -75,12 +75,12 @@ window.StockFlowCalibration = (() => {
         const maePath = path.map(x => {
           const high = num(x.high), low = num(x.low);
           if (high == null || low == null) return null;
-          return a.signal === 'BUY' ? pct(low, entry) : pct(entry, high);
+          return a.signal === 'BUY' ? Math.max(0, -pct(low, entry)) : Math.max(0, -pct(entry, high));
         }).filter(Number.isFinite);
         const mfePath = path.map(x => {
           const high = num(x.high), low = num(x.low);
           if (high == null || low == null) return null;
-          return a.signal === 'BUY' ? pct(high, entry) : pct(entry, low);
+          return a.signal === 'BUY' ? Math.max(0, pct(high, entry)) : Math.max(0, pct(entry, low));
         }).filter(Number.isFinite);
         if (!maePath.length || !mfePath.length) continue;
 
