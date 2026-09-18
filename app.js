@@ -47,30 +47,44 @@ function render(){
       if(s!=='ALL')detail(s);
       else $('detail').innerHTML='Klik saham pada Pareto untuk melihat detail.';
       
-      setTimeout(()=>{
+      setTimeout(async()=>{
         if(seq!==renderSeq)return;
-        try{
-          let results=[];
-          if(window.StockFlowCalibration){
-            const horizons=[1,3,5,10,20];
-            results=horizons.map(h=>{
-              try{
-                const x=StockFlowCalibration.walkForward(pool,{lookback:Math.min(lb,20),horizon:h,costPct:1});
-                return x;
-              }catch(err){
-                console.error('[BACKTEST T+'+h+']',err);
-                return {horizon:h,total:{avgReturn:null,hitRate:null,count:0}};
-              }
-            });
+        const horizons=[1,3,5,10,20];
+        const box=$('backtest');
+        box.innerHTML=`<div class="btchart"><div class="btsvgwrap"><svg class="btsvg" viewBox="0 0 520 210" preserveAspectRatio="none" aria-label="Backtest T+1 sampai T+20"><line x1="30" y1="105" x2="510" y2="105" class="btaxis"></line><g id="btbarsvg"></g></svg></div><div class="btlegend"><span>Directional return · walk-forward</span><em>Internal stress cost: 1.00%</em></div><div class="btstats" id="btstats"></div></div>`;
+        const svg=$('btbarsvg'),stats=$('btstats');
+        const ns='http://www.w3.org/2000/svg';
+        const xs=[70,180,290,400,490];
+        horizons.forEach((h,i)=>{
+          const g=document.createElementNS(ns,'g');
+          g.setAttribute('data-horizon',h);
+          const r=document.createElementNS(ns,'rect');
+          r.setAttribute('x',xs[i]-20);r.setAttribute('y',104);r.setAttribute('width',40);r.setAttribute('height',2);r.setAttribute('rx',4);r.setAttribute('class','btbar');
+          const lab=document.createElementNS(ns,'text');
+          lab.setAttribute('x',xs[i]);lab.setAttribute('y',198);lab.setAttribute('text-anchor','middle');lab.setAttribute('class','bttext');lab.textContent='T+'+h;
+          const val=document.createElementNS(ns,'text');
+          val.setAttribute('x',xs[i]);val.setAttribute('y',94);val.setAttribute('text-anchor','middle');val.setAttribute('class','btvalue');val.textContent='…';
+          g.append(r,lab,val);svg.append(g);
+          const st=document.createElement('div');st.dataset.horizon=h;st.innerHTML='<small>T+'+h+'</small><b>…</b><span>menghitung</span>';stats.append(st);
+        });
+        const update=(h,x)=>{
+          const g=svg.querySelector('[data-horizon="'+h+'"]'),r=g?.querySelector('rect'),v=g?.querySelector('.btvalue'),st=stats.querySelector('[data-horizon="'+h+'"]');
+          const ret=Number(x?.total?.avgReturn), hit=Number(x?.total?.hitRate), count=Number(x?.total?.count||0);
+          const ok=Number.isFinite(ret), mag=ok?Math.min(82,Math.max(8,Math.abs(ret)*8)):8, y=ok&&ret>=0?104-mag:104;
+          if(r){r.setAttribute('y',y);r.setAttribute('height',mag);r.setAttribute('class',ok&&ret<0?'btbar btneg':'btbar');}
+          if(v){v.setAttribute('y',ok&&ret>=0?y-5:ok?y+mag+14:96);v.textContent=ok?fmt(ret,2)+'%':'—';}
+          if(st)st.innerHTML='<small>T+'+h+'</small><b>'+(ok?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':'No signal · '+count+' signal')+'</span>';
+        };
+        for(const h of horizons){
+          if(seq!==renderSeq)break;
+          await new Promise(r=>setTimeout(r,20));
+          try{
+            const x=window.StockFlowCalibration?.walkForward(pool,{lookback:Math.min(lb,20),horizon:h,costPct:1});
+            update(h,x);
+          }catch(err){
+            console.error('[BACKTEST T+'+h+']',err);
+            update(h,{total:{avgReturn:null,hitRate:null,count:0}});
           }
-          const points=results.map(x=>`<div><small>T+${x.horizon}</small><b>${fmt(x.total.avgReturn,2)}%</b><span>${fmt(x.total.hitRate,1)}% hit · ${x.total.count} signal</span></div>`).join('');
-          const valid=results.filter(x=>x&&x.total);
-          $('backtest').innerHTML=valid.length
-            ?`<div class="btchart"><div class="btbars">${valid.map(x=>`<div class="btpoint" style="--h:${Math.min(100,Math.max(4,50+Number(x.total.avgReturn||0)*8))}%"><i></i><small>T+${x.horizon}</small><b>${x.total.avgReturn==null?'—':fmt(x.total.avgReturn,2)+'%'}</b></div>`).join('')}</div><div class="btlegend"><span>Directional return · walk-forward</span><em>Internal stress cost: 1.00%</em></div><div class="btstats">${valid.map(x=>`<div><small>T+${x.horizon}</small><b>${x.total.avgReturn==null?'—':fmt(x.total.avgReturn,2)+'%'}</b><span>${x.total.hitRate==null?'No signal':fmt(x.total.hitRate,1)+'% hit · '+x.total.count+' signal'}</span></div>`).join('')}</div></div>`
-            :'<div class="btlegend"><span>Backtest engine belum siap — data market tetap aktif.</span></div>';
-        }catch(e){
-          $('backtest').innerHTML='<div class="btlegend"><span>Backtest gagal dihitung, tetapi data market tetap aktif.</span></div>';
-          console.error('[BACKTEST]',e);
         }
       },0);
     }catch(e){
