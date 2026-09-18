@@ -1,52 +1,24 @@
 const CHARTS=['https://query1.finance.yahoo.com/v8/finance/chart','https://query2.finance.yahoo.com/v8/finance/chart'];
-let yahooCookie='',yahooCrumb='',yahooSessionAt=0;
-async function yahooSession(){
-  if(yahooCookie&&yahooCrumb&&Date.now()-yahooSessionAt<600000)return;
-  const boot=await fetch('https://fc.yahoo.com',{headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36'}});
-  yahooCookie=(boot.headers.getSetCookie?.()??[]).map(x=>x.split(';')[0]).join('; ')||'';
-  await boot.body?.cancel();
-  const cr=await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb',{headers:{Accept:'text/plain','User-Agent':'Mozilla/5.0','Cookie':yahooCookie}});
-  if(!cr.ok)throw Error(`Yahoo crumb HTTP ${cr.status}`);
-  yahooCrumb=(await cr.text()).trim();
-  if(!yahooCrumb)throw Error('Yahoo crumb kosong');
-  yahooSessionAt=Date.now();
-}
-export async function yahooFetchScreener(body:string){
-  await yahooSession();
-  const base='https://query1.finance.yahoo.com/v1/finance/screener';
-  const headers={Accept:'application/json','Content-Type':'application/json','User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36',Cookie:yahooCookie};
-  const makeUrl=()=>base+'?crumb='+encodeURIComponent(yahooCrumb)+'&lang=en-US&region=US&formatted=false&corsDomain=finance.yahoo.com';
-  let r=await fetch(makeUrl(),{method:'POST',headers,body});
-  if(r.status===401||r.status===403){
-    await r.body?.cancel();yahooCookie='';yahooCrumb='';yahooSessionAt=0;
-    await yahooSession();
-    r=await fetch(makeUrl(),{method:'POST',headers:{...headers,Cookie:yahooCookie},body});
-  }
-  return r;
-}
-
+const UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36';
 async function yahooFetch(url:string){
-  await yahooSession();
-  const h={Accept:'application/json','User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36',Cookie:yahooCookie};
-  let r=await fetch(url+(url.includes('?')?'&':'?')+`crumb=${encodeURIComponent(yahooCrumb)}`,{headers:h});
-  if(r.status===401||r.status===403){
-    await r.body?.cancel();yahooCookie='';yahooCrumb='';yahooSessionAt=0;
-    await yahooSession();
-    r=await fetch(url+(url.includes('?')?'&':'?')+`crumb=${encodeURIComponent(yahooCrumb)}`,{headers:{...h,Cookie:yahooCookie}});
+  let last:any=null;
+  for(const baseUrl of [url,url.replace('query1.finance.yahoo.com','query2.finance.yahoo.com')]){
+    try{
+      const r=await fetch(baseUrl,{headers:{Accept:'application/json','User-Agent':UA}});
+      last=r;
+      if(r.ok)return r;
+      await r.body?.cancel();
+    }catch(e){last=e}
   }
-  return r;
+  if(last instanceof Response)return last;
+  throw last instanceof Error?last:Error('Yahoo Finance request failed');
 }
 export async function yahooOhlcv(ticker:string,from:string,to:string,name=''){
   const p1=Math.floor(new Date(`${from.slice(0,4)}-${from.slice(4,6)}-${from.slice(6,8)}T00:00:00Z`).getTime()/1000);
-  const p2=Math.floor(new Date(`${to.slice(0,4)}-${to.slice(4,6)}-${to.slice(6,8)}T23:59:59Z`).getTime()/1000)+1;
+  const p2=Math.floor(new Date(`${to.slice(0,4)}-${to.slice(6,8)}-${to.slice(6,8)}T23:59:59Z`).getTime()/1000)+1;
   const qs=`period1=${p1}&period2=${p2}&interval=1d&events=history&includeAdjustedClose=false`;
-  let response:any=null;
-  for(const base of CHARTS){
-    response=await yahooFetch(`${base}/${encodeURIComponent(ticker.toUpperCase())}.JK?${qs}`);
-    if(response.ok)break;
-    if(response.status!==401&&response.status!==403)break;
-  }
-  if(!response?.ok)throw new Error(`Yahoo Finance HTTP ${response?.status||'ERR'}`);
+  const response=await yahooFetch(`${CHARTS[0]}/${encodeURIComponent(ticker.toUpperCase())}.JK?${qs}`);
+  if(!response.ok)throw new Error(`Yahoo Finance HTTP ${response.status}`);
   const payload=await response.json(),result=payload?.chart?.result?.[0];
   if(!result)throw new Error(`Yahoo Finance: no data for ${ticker}`);
   const q=result.indicators?.quote?.[0]??{};
