@@ -241,13 +241,20 @@ window.StockFlow = (() => {
     const lb=Math.max(2,Number(lookback)||20);
     series.forEach(s=>{
       const r=s.rows.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
-      for(let i=lb;i<r.length-horizon;i++){
+      // Simulate one position at a time per stock: after a signal, hold
+      // until the selected horizon before allowing another entry. This avoids
+      // counting overlapping T+h outcomes as independent trades.
+      for(let i=lb;i<r.length-horizon;){
         const a=analyze(r.slice(0,i+1),lb);
-        if(!a||a.signal==='NEUTRAL')continue;
+        if(!a||a.signal==='NEUTRAL'){i++;continue;}
         const entry=Number(r[i].close),future=Number(r[i+horizon].close);
-        if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(future))continue;
-        const ret=(future/entry-1)*100;
-        observations.push({signal:a.signal,ret,score:a.score,confidence:a.confidence,ticker:s.ticker,date:r[i].date});
+        if(Number.isFinite(entry)&&entry>0&&Number.isFinite(future)){
+          const ret=(future/entry-1)*100;
+          observations.push({signal:a.signal,ret,score:a.score,confidence:a.confidence,ticker:s.ticker,date:r[i].date});
+          i+=horizon;
+        }else{
+          i++;
+        }
       }
     });
     if(!observations.length)return {hitRate:null,avgReturn:null,medianReturn:null,winLossRatio:null,expectancy:null,count:0,weightedReturn:null};
