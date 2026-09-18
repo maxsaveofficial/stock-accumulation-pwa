@@ -1,4 +1,4 @@
-const $=id=>document.getElementById(id);let data=makeDemo(),brokerRows=[],liveEnabled=false,selectedTickers=new Set();const BACKEND_URL=window.STOCKFLOW_BACKEND_URL||'https://stock-accumulation-pwa.maxsaveofficial.deno.net',PROVIDER_KEY='stockflow-provider',CACHE_KEY='stockflow-auto-cache-v1';
+const $=id=>document.getElementById(id);let data=[],brokerRows=[],liveEnabled=false,selectedTickers=new Set();const BACKEND_URL=window.STOCKFLOW_BACKEND_URL||'https://stock-accumulation-pwa.maxsaveofficial.deno.net',PROVIDER_KEY='stockflow-provider',CACHE_KEY='stockflow-auto-cache-v1';
 function makeDemo(){const ts=['BBCA','BBRI','BMRI','TLKM','ASII','BBNI','ICBP','INDF','ANTM','MDKA','GOTO','UNVR','PGAS','ADRO','PTBA','SMGR','JPFA','KLBF','AMRT','ACES'];return ts.map((ticker,k)=>{let p=1000+k*275,rows=[],reg=k<6?'BUY':k>=14?'SELL':'NEUTRAL';for(let i=0;i<140;i++){const d=new Date(Date.now()-(139-i)*86400000),c=Math.sin((i+k)*.37),n=Math.sin((i*7+k*11)*.91)*.004,dir=reg==='BUY'?.0028:reg==='SELL'?-.0028:.0001*c,o=p*(1+n),m=dir+(reg==='BUY'?Math.max(0,c)*.006:reg==='SELL'?-Math.max(0,c)*.006:c*.008)+n*.45,cl=o*(1+m),h=Math.max(o,cl)*(1+(reg==='BUY'?.01:.006)+Math.abs(n)),l=Math.min(o,cl)*(1+(reg==='SELL'?-.01:-.006)-Math.abs(n)),v=Math.round((650000+((i*9301+k*17011)%700000))*(reg==='NEUTRAL'?1:(i%9===0?1.8:1.05)));rows.push({date:d.toISOString().slice(0,10),ticker,open:o,high:h,low:l,close:cl,volume:v,value:v*cl,brokerNetValue:(reg==='BUY'?.16:reg==='SELL'?- .16:.02*c)*v*cl});p=cl}return{ticker,rows,lookback:20}})}
 function esc(x){return String(x??'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[m]||m))}
 function fmt(x,d=2){return x==null||!Number.isFinite(Number(x))?'-':Number(x).toFixed(d)}
@@ -107,7 +107,7 @@ function render(){
           if(seq!==renderSeq)break;
           await new Promise(r=>setTimeout(r,20));
           try{
-            const raw=window.StockFlow?.backtest(pool,h,Math.min(lb,20));
+            const raw=window.StockFlow?.backtest(pool,h,lb);
             // Use the scanner's own historical signal engine for the preview.
             // Apply the displayed 1% internal stress cost to the average return
             // without changing the underlying signal count.
@@ -133,7 +133,7 @@ function render(){
   },0);
 }
 function bindRows(){document.querySelectorAll('#buyTable tr[data-ticker]').forEach(e=>e.onclick=()=>detail(e.dataset.ticker,'buy'));document.querySelectorAll('#sellTable tr[data-ticker]').forEach(e=>e.onclick=()=>detail(e.dataset.ticker,'sell'))}
-function detail(t,zone){const s=data.find(x=>x.ticker===t);if(!s)return;const a=StockFlow.analyze(s.rows,+$('lookback').value),b=a.broker||{};const target=zone==='buy'?'detailBuy':'detailSell';const el=$(target);if(!el)return;el.innerHTML=`<div class="detailgrid"><div><small>Signal</small><b>${a.signal}</b></div><div><small>Confidence</small><b>${fmt(a.confidence,0)}</b></div><div><small>Pattern</small><b>${esc(a.pattern)}</b></div><div><small>Broker flow</small><b>${fmt(a.brokerScore,0)}</b></div><div><small>Flow status</small><b>${b.available?'ACTIVE':'NOT AVAILABLE'}</b></div><div><small>Broker persistence 5D</small><b>${fmt(b.persistence5,0)}</b></div><div><small>Concentration</small><b>${fmt(b.concentration,0)}</b></div><div><small>Flow divergence</small><b>${fmt(b.divergence,0)}</b></div><div><small>Rotation</small><b>${fmt(b.rotation,0)}</b></div><div><small>Breakdown risk</small><b>${fmt(a.breakdown,0)}</b></div><div><small>Support</small><b>${fmt(a.support,0)}</b></div><div><small>Resistance</small><b>${fmt(a.resistance,0)}</b></div></div>`}
+function detail(t,zone){const s=data.find(x=>x.ticker===t);if(!s)return;const a=StockFlow.analyze(s.rows,+$('lookback').value),b=a.broker||{};const target=zone==='buy'?'detailBuy':'detailSell';const el=$(target);if(!el)return;const brokerValue=b.available?fmt(a.brokerScore,0):'-',brokerMetric=k=>b.available?fmt(b[k],0):'-';el.innerHTML=`<div class="detailgrid"><div><small>Signal</small><b>${a.signal}</b></div><div><small>Confidence</small><b>${fmt(a.confidence,0)}</b></div><div><small>Pattern</small><b>${esc(a.pattern)}</b></div><div><small>Broker flow</small><b>${brokerValue}</b></div><div><small>Flow status</small><b>${b.available?'ACTIVE':'NOT AVAILABLE'}</b></div><div><small>Broker persistence 5D</small><b>${brokerMetric('persistence5')}</b></div><div><small>Concentration</small><b>${brokerMetric('concentration')}</b></div><div><small>Flow divergence</small><b>${brokerMetric('divergence')}</b></div><div><small>Rotation</small><b>${brokerMetric('rotation')}</b></div><div><small>Breakdown risk</small><b>${fmt(a.breakdown,0)}</b></div><div><small>Support</small><b>${fmt(a.support,0)}</b></div><div><small>Resistance</small><b>${fmt(a.resistance,0)}</b></div></div>`}
 function refresh(){const el=$('ticker');if(!el)return;const current=[...selectedTickers];const all=!current.length||current.length===data.length;el.innerHTML='<option value="ALL">ALL SAHAM · '+data.length+'</option>'+data.map(x=>'<option value="'+esc(x.ticker)+'">'+esc(x.ticker)+(x.name?' — '+esc(x.name):'')+'</option>').join('');el.value=all?'ALL':(current[0]||'ALL');el.onchange=e=>{selectedTickers=e.target.value==='ALL'?new Set(data.map(x=>x.ticker)):new Set([e.target.value]);autoLoad()}}
 function ymd(d){return d.toISOString().slice(0,10).replaceAll('-','')}function provider(){return $('provider').value}
 function info(){const p=provider();const msg=p==='idx'?'IDX direct: sumber resmi IDX. Jika 403, data tidak dipalsukan.':p==='yahoo'?'Yahoo Finance: sumber pihak ketiga; historical/delayed OHLCV, bukan IDX dan bukan realtime exchange feed.':p==='indexalpha'?'Index Alpha: API pihak ketiga; broker/OHLCV sesuai akses akun.':p==='remote-csv'?'Daily Remote CSV: CSV publik pihak ketiga, IDX-derived via imq21; bukan API resmi IDX.':'AUTO: Daily Remote CSV (IDX-derived via imq21) → Yahoo Finance historical → cache lokal. IDX direct hanya opsional; tidak perlu upload CSV.';const txt=$('providerInfoText');if(txt)txt.textContent=msg;try{localStorage.setItem(PROVIDER_KEY,p)}catch{}}
@@ -163,6 +163,9 @@ async function autoLoad(){
       $('detailSell').innerHTML='Data live belum tersedia.';
       return;
     }
+    data=[];
+    selectedTickers=new Set();
+    refresh();
     render();
   }
 }
