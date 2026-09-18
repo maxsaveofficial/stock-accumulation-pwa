@@ -50,12 +50,23 @@ function render(){
       setTimeout(()=>{
         if(seq!==renderSeq)return;
         try{
-          const results=window.StockFlowCalibration
-            ?StockFlowCalibration.multiHorizon(pool,[1,3,5,10,20],{lookback:Math.min(lb,20),costPct:1})
-            :[];
+          let results=[];
+          if(window.StockFlowCalibration){
+            const horizons=[1,3,5,10,20];
+            results=horizons.map(h=>{
+              try{
+                const x=StockFlowCalibration.walkForward(pool,{lookback:Math.min(lb,20),horizon:h,costPct:1});
+                return x;
+              }catch(err){
+                console.error('[BACKTEST T+'+h+']',err);
+                return {horizon:h,total:{avgReturn:null,hitRate:null,count:0}};
+              }
+            });
+          }
           const points=results.map(x=>`<div><small>T+${x.horizon}</small><b>${fmt(x.total.avgReturn,2)}%</b><span>${fmt(x.total.hitRate,1)}% hit · ${x.total.count} signal</span></div>`).join('');
-          $('backtest').innerHTML=results.length
-            ?`<div class="btchart"><div class="btbars">${results.map(x=>`<div class="btpoint" style="--h:${Math.min(100,Math.max(4,50+Number(x.total.avgReturn||0)*8))}%"><i></i><small>T+${x.horizon}</small><b>${fmt(x.total.avgReturn,2)}%</b></div>`).join('')}</div><div class="btlegend"><span>Directional return net cost</span><em>Assumption internal: round-trip cost 1.00%</em></div><div class="btstats">${points}</div></div>`
+          const valid=results.filter(x=>x&&x.total);
+          $('backtest').innerHTML=valid.length
+            ?`<div class="btchart"><div class="btbars">${valid.map(x=>`<div class="btpoint" style="--h:${Math.min(100,Math.max(4,50+Number(x.total.avgReturn||0)*8))}%"><i></i><small>T+${x.horizon}</small><b>${x.total.avgReturn==null?'—':fmt(x.total.avgReturn,2)+'%'}</b></div>`).join('')}</div><div class="btlegend"><span>Directional return · walk-forward</span><em>Internal stress cost: 1.00%</em></div><div class="btstats">${valid.map(x=>`<div><small>T+${x.horizon}</small><b>${x.total.avgReturn==null?'—':fmt(x.total.avgReturn,2)+'%'}</b><span>${x.total.hitRate==null?'No signal':fmt(x.total.hitRate,1)+'% hit · '+x.total.count+' signal'}</span></div>`).join('')}</div></div>`
             :'<div class="btlegend"><span>Backtest engine belum siap — data market tetap aktif.</span></div>';
         }catch(e){
           $('backtest').innerHTML='<div class="btlegend"><span>Backtest gagal dihitung, tetapi data market tetap aktif.</span></div>';
