@@ -51,26 +51,23 @@ function render(){
         if(seq!==renderSeq)return;
         const horizons=[1,3,5,10,20];
         const box=$('backtest');
-        box.innerHTML=`<div class="btchart"><div class="bthwrap"><div class="bthaxis"><span>+5%</span><span>+2.5%</span><span>0%</span><span>-2.5%</span><span>-5%</span></div><div class="bthplot"><div class="bthzero"></div><div id="btbars"></div></div></div><div class="bthlabels" id="bthlabels"></div><div class="btlegend"><span>Directional return · walk-forward</span><em>Internal stress cost: 1.00%</em></div><div class="btstats" id="btstats"></div></div>`;
-        const bars=$('btbars'),labels=$('bthlabels'),stats=$('btstats');
-        horizons.forEach(h=>{
-          const bar=document.createElement('div');bar.className='bthbar';bar.dataset.horizon=h;bar.innerHTML='<i></i><b>…</b>';bars.appendChild(bar);
-          const lab=document.createElement('div');lab.textContent='T+'+h;labels.appendChild(lab);
-          const st=document.createElement('div');st.dataset.horizon=h;st.innerHTML='<small>T+'+h+'</small><b>…</b><span>menghitung</span>';stats.appendChild(st);
-        });
-        const update=(h,x)=>{
-          const bar=bars.querySelector('[data-horizon="'+h+'"]'),fill=bar?.querySelector('i'),val=bar?.querySelector('b'),st=stats.querySelector('[data-horizon="'+h+'"]');
+        box.innerHTML=`<div class="btchart btcompact"><div class="bt5title"><b>T+5</b><span>Directional return · walk-forward</span></div><div class="bt5"><div class="bt5line bt5base"></div><div id="bt5line" class="bt5line"></div><b id="bt5value">…</b></div><div class="btlegend"><span>5 hari setelah sinyal</span><em>Internal stress cost: 1.00%</em></div><div class="btstats" id="btstats"></div></div>`;
+        const stats=$('btstats');
+        const st=document.createElement('div');st.innerHTML='<small>T+5</small><b>…</b><span>menghitung</span>';stats.appendChild(st);
+        await new Promise(r=>setTimeout(r,20));
+        if(seq!==renderSeq)return;
+        try{
+          const x=window.StockFlowCalibration?.walkForward(pool,{lookback:Math.min(lb,20),horizon:5,costPct:1});
           const ret=Number(x?.total?.avgReturn),hit=Number(x?.total?.hitRate),count=Number(x?.total?.count||0),ok=Number.isFinite(ret);
-          const px=ok?Math.min(70,Math.max(4,Math.abs(ret)*12)):4;
-          if(fill){fill.style.height=px+'px';fill.className=ok&&ret<0?'btneg':'';fill.dataset.dir=ok&&ret<0?'neg':'pos';}
-          if(val)val.textContent=ok?fmt(ret,2)+'%':'—';
-          if(st)st.innerHTML='<small>T+'+h+'</small><b>'+(ok?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':'No signal · '+count+' signal')+'</span>';
-        };
-        for(const h of horizons){
-          if(seq!==renderSeq)break;
-          await new Promise(r=>setTimeout(r,20));
-          try{update(h,window.StockFlowCalibration?.walkForward(pool,{lookback:Math.min(lb,20),horizon:h,costPct:1}))}
-          catch(err){console.error('[BACKTEST T+'+h+']',err);update(h,{total:{avgReturn:null,hitRate:null,count:0}})}
+          const line=$('bt5line'),value=$('bt5value');
+          const pct=ok?Math.min(42,Math.max(6,Math.abs(ret)*10)):6;
+          if(line){line.style.width=pct+'%';line.className='bt5line '+(ok&&ret<0?'bt5neg':'bt5pos');}
+          if(value)value.textContent=ok?fmt(ret,2)+'%':'—';
+          st.innerHTML='<small>T+5</small><b>'+(ok?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':'No signal · '+count+' signal')+'</span>';
+        }catch(err){
+          console.error('[BACKTEST T+5]',err);
+          $('bt5value').textContent='—';
+          st.innerHTML='<small>T+5</small><b>—</b><span>Backtest error</span>';
         }
       },0);
     }catch(e){
