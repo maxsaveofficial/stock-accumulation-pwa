@@ -51,40 +51,26 @@ function render(){
         if(seq!==renderSeq)return;
         const horizons=[1,3,5,10,20];
         const box=$('backtest');
-        box.innerHTML=`<div class="btchart"><div class="btsvgwrap"><svg class="btsvg" viewBox="0 0 520 210" preserveAspectRatio="none" aria-label="Backtest T+1 sampai T+20"><line x1="30" y1="105" x2="510" y2="105" class="btaxis"></line><g id="btbarsvg"></g></svg></div><div class="btlegend"><span>Directional return · walk-forward</span><em>Internal stress cost: 1.00%</em></div><div class="btstats" id="btstats"></div></div>`;
-        const svg=$('btbarsvg'),stats=$('btstats');
-        const ns='http://www.w3.org/2000/svg';
-        const xs=[70,180,290,400,490];
-        horizons.forEach((h,i)=>{
-          const g=document.createElementNS(ns,'g');
-          g.setAttribute('data-horizon',h);
-          const r=document.createElementNS(ns,'rect');
-          r.setAttribute('x',xs[i]-20);r.setAttribute('y',104);r.setAttribute('width',40);r.setAttribute('height',2);r.setAttribute('rx',4);r.setAttribute('class','btbar');
-          const lab=document.createElementNS(ns,'text');
-          lab.setAttribute('x',xs[i]);lab.setAttribute('y',198);lab.setAttribute('text-anchor','middle');lab.setAttribute('class','bttext');lab.textContent='T+'+h;
-          const val=document.createElementNS(ns,'text');
-          val.setAttribute('x',xs[i]);val.setAttribute('y',94);val.setAttribute('text-anchor','middle');val.setAttribute('class','btvalue');val.textContent='…';
-          g.append(r,lab,val);svg.append(g);
-          const st=document.createElement('div');st.dataset.horizon=h;st.innerHTML='<small>T+'+h+'</small><b>…</b><span>menghitung</span>';stats.append(st);
+        box.innerHTML=`<div class="btchart"><div class="bthwrap"><div class="bthaxis"><span>+5%</span><span>+2.5%</span><span>0%</span><span>-2.5%</span><span>-5%</span></div><div class="bthplot"><div class="bthzero"></div><div id="btbars"></div></div></div><div class="bthlabels" id="bthlabels"></div><div class="btlegend"><span>Directional return · walk-forward</span><em>Internal stress cost: 1.00%</em></div><div class="btstats" id="btstats"></div></div>`;
+        const bars=$('btbars'),labels=$('bthlabels'),stats=$('btstats');
+        horizons.forEach(h=>{
+          const bar=document.createElement('div');bar.className='bthbar';bar.dataset.horizon=h;bar.innerHTML='<i></i><b>…</b>';bars.appendChild(bar);
+          const lab=document.createElement('div');lab.textContent='T+'+h;labels.appendChild(lab);
+          const st=document.createElement('div');st.dataset.horizon=h;st.innerHTML='<small>T+'+h+'</small><b>…</b><span>menghitung</span>';stats.appendChild(st);
         });
         const update=(h,x)=>{
-          const g=svg.querySelector('[data-horizon="'+h+'"]'),r=g?.querySelector('rect'),v=g?.querySelector('.btvalue'),st=stats.querySelector('[data-horizon="'+h+'"]');
-          const ret=Number(x?.total?.avgReturn), hit=Number(x?.total?.hitRate), count=Number(x?.total?.count||0);
-          const ok=Number.isFinite(ret), mag=ok?Math.min(82,Math.max(8,Math.abs(ret)*8)):8, y=ok&&ret>=0?104-mag:104;
-          if(r){r.setAttribute('y',y);r.setAttribute('height',mag);r.setAttribute('class',ok&&ret<0?'btbar btneg':'btbar');}
-          if(v){v.setAttribute('y',ok&&ret>=0?y-5:ok?y+mag+14:96);v.textContent=ok?fmt(ret,2)+'%':'—';}
+          const bar=bars.querySelector('[data-horizon="'+h+'"]'),fill=bar?.querySelector('i'),val=bar?.querySelector('b'),st=stats.querySelector('[data-horizon="'+h+'"]');
+          const ret=Number(x?.total?.avgReturn),hit=Number(x?.total?.hitRate),count=Number(x?.total?.count||0),ok=Number.isFinite(ret);
+          const px=ok?Math.min(70,Math.max(4,Math.abs(ret)*12)):4;
+          if(fill){fill.style.height=px+'px';fill.className=ok&&ret<0?'btneg':'';fill.dataset.dir=ok&&ret<0?'neg':'pos';}
+          if(val)val.textContent=ok?fmt(ret,2)+'%':'—';
           if(st)st.innerHTML='<small>T+'+h+'</small><b>'+(ok?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':'No signal · '+count+' signal')+'</span>';
         };
         for(const h of horizons){
           if(seq!==renderSeq)break;
           await new Promise(r=>setTimeout(r,20));
-          try{
-            const x=window.StockFlowCalibration?.walkForward(pool,{lookback:Math.min(lb,20),horizon:h,costPct:1});
-            update(h,x);
-          }catch(err){
-            console.error('[BACKTEST T+'+h+']',err);
-            update(h,{total:{avgReturn:null,hitRate:null,count:0}});
-          }
+          try{update(h,window.StockFlowCalibration?.walkForward(pool,{lookback:Math.min(lb,20),horizon:h,costPct:1}))}
+          catch(err){console.error('[BACKTEST T+'+h+']',err);update(h,{total:{avgReturn:null,hitRate:null,count:0}})}
         }
       },0);
     }catch(e){
