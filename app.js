@@ -56,7 +56,7 @@ function render(){
         if(seq!==renderSeq)return;
         const horizons=[1,3,5,10,20];
         const box=$('backtest');
-        box.innerHTML=`<div class="btchart btcompact"><div class="bt5title"><b>Backtest T+1 → T+20</b><span>Donut = return relatif · walk-forward</span></div><div class="btdonutwrap"><svg id="btDonut" viewBox="0 0 180 180" aria-label="Backtest horizons"><circle cx="90" cy="90" r="62" class="btdonutbase"></circle><g id="btDonutSegs"></g></svg><div class="btdonutcenter"><b id="btBestT">—</b><span id="btBestRet">menghitung</span></div></div><div class="btstats" id="btstats"></div><div class="btlegend"><span>Segmen makin besar = return makin tinggi</span><em>Internal stress cost: 1.00%</em></div></div>`;
+        box.innerHTML=`<div class="btchart btcompact"><div class="bt5title"><b>Backtest T+1 → T+20</b><span>Donut = gross return · walk-forward</span></div><div class="btdonutwrap"><svg id="btDonut" viewBox="0 0 180 180" aria-label="Backtest horizons"><circle cx="90" cy="90" r="62" class="btdonutbase"></circle><g id="btDonutSegs"></g></svg><div class="btdonutcenter"><b id="btBestT">—</b><span id="btBestRet">menghitung</span></div></div><div class="btstats" id="btstats"></div><div class="btlegend"><span>Segmen makin besar = return makin tinggi</span><em>Gross return · tanpa biaya/stress</em></div></div>`;
         const stats=$('btstats'),segRoot=$('btDonutSegs'),results=[];
         horizons.forEach(h=>{
           const st=document.createElement('div');st.dataset.horizon=h;st.innerHTML='<small>T+'+h+'</small><b>…</b><span>menghitung</span>';stats.appendChild(st);
@@ -112,7 +112,7 @@ function render(){
             // Apply the displayed 1% internal stress cost to the average return
             // without changing the underlying signal count.
             const x={total:{
-              avgReturn:Number.isFinite(Number(raw?.avgReturn))?Number(raw.avgReturn)-1:null,
+              avgReturn:Number.isFinite(Number(raw?.avgReturn))?Number(raw.avgReturn):null,
               hitRate:raw?.hitRate,
               count:Number(raw?.count||0)
             }};
