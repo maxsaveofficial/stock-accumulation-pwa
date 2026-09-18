@@ -51,25 +51,33 @@ function render(){
         if(seq!==renderSeq)return;
         const horizons=[1,3,5,10,20];
         const box=$('backtest');
-        box.innerHTML=`<div class="btchart btcompact"><div class="bt5title"><b>T+5</b><span>Directional return · walk-forward</span></div><div class="bt5"><div class="bt5line bt5base"></div><div id="bt5line" class="bt5line"></div><b id="bt5value">…</b></div><div class="btlegend"><span>5 hari setelah sinyal</span><em>Internal stress cost: 1.00%</em></div><div class="btstats" id="btstats"></div></div>`;
-        const stats=$('btstats');
-        const st=document.createElement('div');st.innerHTML='<small>T+5</small><b>…</b><span>menghitung</span>';stats.appendChild(st);
-        await new Promise(r=>setTimeout(r,20));
-        if(seq!==renderSeq)return;
-        try{
-          const x=window.StockFlowCalibration?.walkForward(pool,{lookback:Math.min(lb,20),horizon:5,costPct:1});
+        box.innerHTML=`<div class="btchart btcompact"><div class="bt5title"><b>Backtest T+1 → T+20</b><span>Directional return · walk-forward</span></div><div class="btmulti" id="btmulti"></div><div class="btlegend"><span>Horizon T+1 sampai T+20</span><em>Internal stress cost: 1.00%</em></div><div class="btstats" id="btstats"></div></div>`;
+        const multi=$('btmulti'),stats=$('btstats');
+        horizons.forEach(h=>{
+          const row=document.createElement('div');row.className='btrow';row.dataset.horizon=h;
+          row.innerHTML='<small>T+'+h+'</small><div class="btrowplot"><i class="btrowbase"></i><i class="btrowfill"></i></div><b>…</b>';
+          multi.appendChild(row);
+          const st=document.createElement('div');st.dataset.horizon=h;st.innerHTML='<small>T+'+h+'</small><b>…</b><span>menghitung</span>';stats.appendChild(st);
+        });
+        const update=(h,x)=>{
+          const row=multi.querySelector('[data-horizon="'+h+'"]'),fill=row?.querySelector('.btrowfill'),val=row?.querySelector('b'),st=stats.querySelector('[data-horizon="'+h+'"]');
           const ret=Number(x?.total?.avgReturn),hit=Number(x?.total?.hitRate),count=Number(x?.total?.count||0),ok=Number.isFinite(ret);
-          const line=$('bt5line'),value=$('bt5value');
-          const pct=ok?Math.min(42,Math.max(6,Math.abs(ret)*10)):6;
-          if(line){line.style.width=pct+'%';line.className='bt5line '+(ok&&ret<0?'bt5neg':'bt5pos');}
-          if(value)value.textContent=ok?fmt(ret,2)+'%':'—';
-          st.innerHTML='<small>T+5</small><b>'+(ok?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':'No signal · '+count+' signal')+'</span>';
-        }catch(err){
-          console.error('[BACKTEST T+5]',err);
-          $('bt5value').textContent='—';
-          st.innerHTML='<small>T+5</small><b>—</b><span>Backtest error</span>';
+          const w=ok?Math.min(100,Math.max(3,Math.abs(ret)*12)):3;
+          if(fill){fill.style.width=w+'%';fill.className='btrowfill '+(ok&&ret<0?'btrowneg':'btrowpos');}
+          if(val)val.textContent=ok?fmt(ret,2)+'%':'—';
+          if(st)st.innerHTML='<small>T+'+h+'</small><b>'+(ok?fmt(ret,2)+'%':'—')+'</b><span>'+(Number.isFinite(hit)?fmt(hit,1)+'% hit · '+count+' signal':'No signal · '+count+' signal')+'</span>';
+        };
+        for(const h of horizons){
+          if(seq!==renderSeq)break;
+          await new Promise(r=>setTimeout(r,20));
+          try{
+            const x=window.StockFlowCalibration?.walkForward(pool,{lookback:Math.min(lb,20),horizon:h,costPct:1});
+            update(h,x);
+          }catch(err){
+            console.error('[BACKTEST T+'+h+']',err);
+            update(h,{total:{avgReturn:null,hitRate:null,count:0}});
+          }
         }
-      },0);
     }catch(e){
       $('buyTable').innerHTML=`<tr><td colspan="5">Signal error: ${esc(e.message)}</td></tr>`;
       $('sellTable').innerHTML=`<tr><td colspan="5">Signal error: ${esc(e.message)}</td></tr>`;
