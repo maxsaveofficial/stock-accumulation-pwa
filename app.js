@@ -91,7 +91,8 @@ function render(){
             console.error('[BACKTEST T+'+h+']',err);
             await update(h,{total:{avgReturn:null,hitRate:null,count:0}});
           }
-        },0);
+        }
+      },0);
     }catch(e){
       $('buyTable').innerHTML=`<tr><td colspan="5">Signal error: ${esc(e.message)}</td></tr>`;
       $('sellTable').innerHTML=`<tr><td colspan="5">Signal error: ${esc(e.message)}</td></tr>`;
