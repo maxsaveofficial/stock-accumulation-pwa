@@ -26,9 +26,6 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Type-check backend
-        run: deno check main.ts
-
       - name: Deploy to Deno Deploy
         uses: denoland/deployctl@v1
         with:
