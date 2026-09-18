@@ -1,5 +1,16 @@
 import { brokerSummary as indexAlphaBrokerSummary, ohlcv as indexAlphaOhlcv } from './providers/indexalpha.ts';
 import { yahooOhlcv } from './providers/yahoo.ts';
+async function yahooFetchScreener(body:string){
+  await yahooSession();
+  const headers={Accept:'application/json','Content-Type':'application/json','User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36',Cookie:yahooCookie};
+  let r=await fetch('https://query1.finance.yahoo.com/v1/finance/screener',{method:'POST',headers,body});
+  if(r.status===401||r.status===403){
+    await r.body?.cancel();yahooCookie='';yahooCrumb='';yahooSessionAt=0;await yahooSession();
+    r=await fetch('https://query1.finance.yahoo.com/v1/finance/screener',{method:'POST',headers:{...headers,Cookie:yahooCookie},body});
+  }
+  return r;
+}
+
 import { remoteCsvRange } from './providers/remote-csv.ts';
 const IDX_HOME='https://www.idx.co.id/id';
 const IDX_STOCK_SUMMARY='https://www.idx.co.id/primary/TradingSummary/GetStockSummary';
@@ -21,7 +32,7 @@ async function yahooUniverse(){
       {operator:'EQ',operands:['exchange','JKT']},
       {operator:'EQ',operands:['quoteType','EQUITY']}
     ]}};
-    const r=await fetch('https://query1.finance.yahoo.com/v1/finance/screener',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','User-Agent':'Mozilla/5.0'},body:JSON.stringify(payload)});
+    const body=JSON.stringify(payload); let r=await yahooFetchScreener(body);
     if(!r.ok)throw Error(`Yahoo screener HTTP ${r.status}`);
     const j=await r.json(),qs=j?.finance?.result?.[0]?.quotes??[];
     for(const q of qs){
