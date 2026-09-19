@@ -75,7 +75,7 @@ window.StockFlowCalibration = (() => {
         const maePath = path.map(x => {
           const high = num(x.high), low = num(x.low);
           if (high == null || low == null) return null;
-          return a.signal === 'BUY' ? Math.max(0, -pct(low, entry)) : Math.max(0, -pct(entry, high));
+          return a.signal === 'BUY' ? Math.max(0, -pct(low, entry)) : Math.max(0, pct(high, entry));
         }).filter(Number.isFinite);
         const mfePath = path.map(x => {
           const high = num(x.high), low = num(x.low);
@@ -94,7 +94,7 @@ window.StockFlowCalibration = (() => {
           confidence: num(a.confidence) ?? 0,
           pattern: a.pattern || 'NEUTRAL',
           brokerAvailable: !!(a.broker && a.broker.available),
-          mae: Math.min(...maePath),
+          mae: Math.max(...maePath),
           mfe: Math.max(...mfePath)
         });
       }
