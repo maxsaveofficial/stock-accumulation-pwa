@@ -9,3 +9,6 @@ header{padding-top:max(13px,calc(env(safe-area-inset-top) + 7px));}
 .source-text{display:none!important}
 
 .condition-guide{display:flex;flex-wrap:wrap;gap:5px 14px;margin:-3px 0 10px;color:#6b7280;font-size:10px;line-height:1.35}.condition-guide b{color:#374151}.condition-guide.single{display:block;margin:-3px 0 9px}.detail-guide{margin:0 0 9px;padding:7px 9px;background:#f9fafb;border-radius:9px}@media(max-width:650px){.condition-guide{gap:4px 10px;font-size:9px}}
+
+/* Mobile readability */
+@media(max-width:650px){body{font-size:16px}header h1{font-size:21px}header p{font-size:12px}h2{font-size:17px}.legend{font-size:12px}.metrics div{font-size:12px}.metrics strong{font-size:22px}th{font-size:10px}td{padding:11px 8px}td b{font-size:15px}.pareto-detail h3{font-size:16px}.detailgrid{gap:9px}.detailgrid div{padding:11px}.detailgrid small{font-size:10px}.detailgrid b{font-size:16px}.btstats>div,.btstats>div small,.btstats>div span{font-size:10px}}
