@@ -4,6 +4,66 @@ function esc(x){return String(x??'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&l
 function fmt(x,d=2){return x==null||!Number.isFinite(Number(x))?'-':Number(x).toFixed(d)}
 function statCells(s){return `<td>${s.count}</td><td>${fmt(s.hitRate,1)}%</td><td>${fmt(s.avgReturn)}%</td><td>${fmt(s.medianReturn)}%</td><td>${fmt(s.expectancy)}%</td><td>${fmt(s.winLossRatio)}</td><td>${fmt(s.avgMAE)}%</td><td>${fmt(s.avgMFE)}%</td>`}
 function table(items,type){return items.length?items.map((x,i)=>`<tr data-ticker="${esc(x.ticker)}"><td>${i+1}</td><td><b>${esc(x.ticker)}</b></td><td>${x.score.toFixed(0)}</td><td>${(type==='BUY'?x.acc:x.dist).toFixed(0)}</td><td>${(type==='BUY'?x.trend:x.breakdown).toFixed(0)}</td></tr>`).join(''):'<tr><td colspan="5">Belum ada kandidat.</td></tr>'}
+function momentPareto(all,lookback=20){
+  const lb=Math.max(2,Number(lookback)||20);
+  const rows=all.map(s=>{
+    const a=StockFlow.analyze(s.rows,lb);
+    if(!a)return null;
+    const b=a.broker||{},sb=a.scoreBreakdown||{},aw=sb.accumulationWeighted||{},dw=sb.distributionWeighted||{};
+    const accEarly=(
+      .22*Number(aw.broker||a.brokerScore||50)+
+      .18*Number(aw.absorption||a.absorption||50)+
+      .16*Number(aw.support||a.support||50)+
+      .14*Number(aw.flowDivergence||50)+
+      .12*Number(aw.trend||a.trend||50)+
+      .10*Number(aw.moneyFlow||a.mfNorm||50)+
+      .08*(100-Math.min(100,Number(a.chasePenalty||0)))
+    );
+    const sellEarly=(
+      .22*Number(dw.broker||100-(a.brokerScore||50))+
+      .18*Number(dw.rejection||50)+
+      .16*Number(dw.support||50)+
+      .14*Number(dw.flowDivergence||50)+
+      .12*Number(dw.trend||100-(a.trend||50))+
+      .10*Number(dw.moneyFlow||100-(a.mfNorm||50))+
+      .08*Math.min(100,Number(a.breakdown||0))
+    );
+    const persistence=b.available?Number(b.persistence5||0):0;
+    const concentration=b.available?Number(b.concentration||0):0;
+    const buyTiming=Math.max(0,Math.min(100,
+      .65*accEarly+.20*persistence+.15*(100-Math.min(100,concentration))
+    ));
+    const sellTiming=Math.max(0,Math.min(100,
+      .65*sellEarly+.20*(100-persistence)+.15*concentration
+    ));
+    const buyEligible=a.signal==='BUY'||(a.pattern==='ABSORPTION'||a.pattern==='QUIET ACCUMULATION');
+    const sellEligible=a.signal==='SELL'||a.pattern==='DISTRIBUTION'||a.pattern==='BREAKDOWN RISK';
+    const buyScore=Math.max(0,Math.min(100,.55*buyTiming+.25*Number(a.acc||50)+.20*Number(a.confidence||50)));
+    const sellScore=Math.max(0,Math.min(100,.55*sellTiming+.25*Number(a.dist||50)+.20*Number(a.confidence||50)));
+    const buyPhase=a.pattern==='QUIET ACCUMULATION'?'ACCUMULATION':a.pattern==='ABSORPTION'?'ABSORPTION':a.pattern==='MARKUP / BREAKOUT'?'EARLY/MARKUP':a.trend<55?'BASE':'MOMENTUM';
+    const sellPhase=a.pattern==='DISTRIBUTION'?'DISTRIBUTION':a.pattern==='BREAKDOWN RISK'?'BREAKDOWN RISK':a.trend>=60?'LATE MOMENTUM':'WEAKENING';
+    return {ticker:s.ticker||a.ticker, a, b, buyScore, sellScore, buyEligible, sellEligible, buyPhase, sellPhase};
+  }).filter(Boolean);
+  const buys=rows.filter(x=>x.buyEligible).sort((a,b)=>b.buyScore-a.buyScore).slice(0,5);
+  const sells=rows.filter(x=>x.sellEligible).sort((a,b)=>b.sellScore-a.sellScore).slice(0,5);
+  return {buys,sells};
+}
+function renderMomentPareto(all,lookback=20){
+  const el=$('momentPareto');if(!el)return;
+  const p=momentPareto(all,lookback);
+  const buy=p.buys,sell=p.sells;
+  const n=Math.max(buy.length,sell.length,5);
+  const rows=Array.from({length:n},(_,i)=>{
+    const b=buy[i],s=sell[i];
+    return '<tr><td>'+(i+1)+'</td>'+
+      '<td><b>'+(b?esc(b.ticker):'—')+'</b></td><td>'+(b?fmt(b.buyScore,0):'—')+'</td><td>'+(b?esc(b.buyPhase):'—')+'</td>'+
+      '<td><b>'+(s?esc(s.ticker):'—')+'</b></td><td>'+(s?fmt(s.sellScore,0):'—')+'</td><td>'+(s?esc(s.sellPhase):'—')+'</td></tr>';
+  }).join('');
+  el.innerHTML='<h3>⚡ Pareto Moment BUY / SELL</h3>'+
+    '<div class="condition-guide single"><b>Moment:</b> bukan sekadar strength; mengutamakan fase awal accumulation/absorption untuk BUY dan perubahan flow/distribution/breakdown untuk SELL.</div>'+
+    '<div class="tablewrap"><table><thead><tr><th>#</th><th>BUY</th><th>Timing</th><th>Phase</th><th>SELL</th><th>Timing</th><th>Phase</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<small class="moment-note">Timing score = ranking diagnostik berbasis flow, absorption/rejection, support, trend, broker persistence dan chase/breakdown risk. Bukan probabilitas keuntungan.</small>';
+}
 let renderSeq=0;
 function render(){
   const seq=++renderSeq;
@@ -44,6 +104,7 @@ function render(){
       $('avgRisk').textContent=(r.reduce((a,x)=>a+x.breakdown,0)/n).toFixed(0);
       $('buyTable').innerHTML=table(o.buy,'BUY');
       $('sellTable').innerHTML=table(o.sell,'SELL');
+      renderMomentPareto(pool,lb);
       bindRows();
       if(s!=='ALL'){
         const zone=o.buy.some(x=>x.ticker===s)?'buy':o.sell.some(x=>x.ticker===s)?'sell':'buy';
