@@ -251,7 +251,7 @@ window.StockFlow = (() => {
 
     return {ticker:last.ticker||'',date:last.date,price:last.close,acc,dist,score,signal,
       confidence,dataQuality,pattern,volRatio,volumeScore,pressure,mfNorm,pvBull,absorption,
-      trend,trendSlope5:slope5,trendSlope20:slope20,breakdown,brokerScore,chasePenalty,scoreBreakdown,
+      trend,trendSlope5:slopeFast,trendSlope20:slopeSlow,breakdown,brokerScore,chasePenalty,scoreBreakdown,
       atr,atrPct,support,resistance,supportDist,resistanceDist,broker:bm};
   }
 
