@@ -135,6 +135,32 @@ function momentPareto(all,lookback=20){
   const sells=rows.filter(x=>x.sellEligible).sort((a,b)=>b.sellScore-a.sellScore).slice(0,5);
   return {buys,sells};
 }
+function phaseIcon(phase,side='buy'){
+  const p=String(phase||'').toUpperCase();
+  const pos={
+    'PRE-ACCUMULATION':[18,30],
+    'ABSORPTION':[31,18],
+    'EARLY BREAKOUT':[45,23],
+    'MARKUP':[58,7],
+    'LATE / CHASE':[69,10],
+    'DISTRIBUTION EARLY':[69,10],
+    'DISTRIBUTION CONFIRMED':[72,13],
+    'BREAKDOWN WARNING':[76,20],
+    'BREAKDOWN':[80,27],
+    'PANIC / LATE EXIT':[82,31]
+  };
+  const xy=pos[p]||[45,23];
+  const color=side==='buy'
+    ? (p==='LATE / CHASE'?'#d97706':'#059669')
+    : (p==='BREAKDOWN WARNING'?'#d97706':'#dc2626');
+  return '<span class="phase-cell '+(side==='buy'?'phase-buy':'phase-sell')+'">'+
+    '<svg class="phase-icon" viewBox="0 0 88 38" aria-hidden="true" focusable="false">'+
+      '<path d="M4 13 L18 30 L31 18 L45 23 L58 7 L69 10 L82 31" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity=".72"></path>'+
+      '<circle cx="'+xy[0]+'" cy="'+xy[1]+'" r="4.4" fill="'+color+'" stroke="#fff" stroke-width="1.4"></circle>'+
+    '</svg>'+
+    '<span class="phase-name">'+esc(phase)+'</span>'+
+  '</span>';
+}
 function renderMomentPareto(all,lookback=20){
   const el=$('momentPareto');if(!el)return;
   const p=momentPareto(all,lookback);
@@ -143,8 +169,8 @@ function renderMomentPareto(all,lookback=20){
   const rows=Array.from({length:n},(_,i)=>{
     const b=buy[i],s=sell[i];
     return '<tr><td>'+(i+1)+'</td>'+
-      '<td><b>'+(b?esc(b.ticker):'—')+'</b></td><td>'+(b?fmt(b.buyScore,0):'—')+'</td><td>'+(b?esc(b.buyPhase):'—')+'</td>'+
-      '<td><b>'+(s?esc(s.ticker):'—')+'</b></td><td>'+(s?fmt(s.sellScore,0):'—')+'</td><td>'+(s?esc(s.sellPhase):'—')+'</td></tr>';
+      '<td><b>'+(b?esc(b.ticker):'—')+'</b></td><td>'+(b?fmt(b.buyScore,0):'—')+'</td><td>'+(b?phaseIcon(b.buyPhase,'buy'):'—')+'</td>'+
+      '<td><b>'+(s?esc(s.ticker):'—')+'</b></td><td>'+(s?fmt(s.sellScore,0):'—')+'</td><td>'+(s?phaseIcon(s.sellPhase,'sell'):'—')+'</td></tr>';
   }).join('');
   el.innerHTML='<h3>⚡ Pareto Moment BUY / SELL</h3>'+
     '<div class="condition-guide single"><b>Moment:</b> bukan sekadar strength; mengutamakan fase awal accumulation/absorption untuk BUY dan perubahan flow/distribution/breakdown untuk SELL.</div>'+
