@@ -200,6 +200,12 @@ window.StockFlow = (() => {
       (trend<35?20:0)+
       (supportDist<0?25:0)
     );
+    const scoreBreakdown={
+      accumulation:{moneyFlow:mfNorm,pressure,volume:bullishVolume,priceVolume:pvBull,trend,support:supportScore,broker:brokerScore,absorption,flowDivergence:flowDivergenceBull},
+      distribution:{moneyFlow:100-mfNorm,pressure:100-pressure,volume:bearishVolume,priceVolume:100-pvBull,trend:100-trend,support:supportWeakness,broker:100-brokerScore,rejection,flowDivergence:flowDivergenceBear},
+      accumulationWeighted:{moneyFlow:.16*mfNorm,pressure:.13*pressure,volume:.08*bullishVolume,priceVolume:.10*pvBull,trend:.13*trend,support:.10*supportScore,broker:.18*brokerScore,absorption:.07*absorption,flowDivergence:.05*flowDivergenceBull},
+      distributionWeighted:{moneyFlow:.14*(100-mfNorm),pressure:.14*(100-pressure),volume:.12*bearishVolume,priceVolume:.10*(100-pvBull),trend:.10*(100-trend),support:.10*supportWeakness,broker:.18*(100-brokerScore),rejection:.07*rejection,flowDivergence:.05*flowDivergenceBear}
+    };
     const signal=acc>=68&&dist<58&&chasePenalty<35?'BUY':
       dist>=65&&acc<58?'SELL':'NEUTRAL';
     const score=signal==='BUY'?acc:signal==='SELL'?dist:Math.max(acc,dist);
@@ -221,7 +227,7 @@ window.StockFlow = (() => {
 
     return {ticker:last.ticker||'',date:last.date,price:last.close,acc,dist,score,signal,
       confidence,dataQuality,pattern,volRatio,volumeScore,pressure,mfNorm,pvBull,absorption,
-      trend,trendSlope5:slope5,trendSlope20:slope20,breakdown,brokerScore,chasePenalty,
+      trend,trendSlope5:slope5,trendSlope20:slope20,breakdown,brokerScore,chasePenalty,scoreBreakdown,
       atr,atrPct,support,resistance,supportDist,resistanceDist,broker:bm};
   }
 
