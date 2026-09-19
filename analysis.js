@@ -229,11 +229,12 @@ window.StockFlow = (() => {
     return bm&&avg([bm.persistence3,bm.persistence5,bm.persistence10])>=60;
   }
 
-  function classify(all,horizon=5){
-    const results=all.map(s=>{const a=analyze(s.rows,s.lookback||20);return a?{...a,ticker:s.ticker}:null}).filter(Boolean);
+  function classify(all,lookback=20){
+    const lb=Math.max(2,Number(lookback)||20);
+    const results=all.map(s=>{const a=analyze(s.rows,lb);return a?{...a,ticker:s.ticker}:null}).filter(Boolean);
     const buy=results.filter(x=>x.signal==='BUY').sort((a,b)=>b.score-a.score).slice(0,5);
     const sell=results.filter(x=>x.signal==='SELL').sort((a,b)=>b.score-a.score).slice(0,5);
-    return {results,buy,sell,horizon};
+    return {results,buy,sell,lookback:lb};
   }
 
   function backtest(series,horizon=5,lookback=20){
