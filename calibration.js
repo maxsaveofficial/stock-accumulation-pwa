@@ -9,6 +9,26 @@ window.StockFlowCalibration = (() => {
   const num = x => Number.isFinite(Number(x)) ? Number(x) : null;
   const fmt0 = x => x == null ? '-' : Number(x).toFixed(2);
 
+  // Default retail-equity fee reference. Actual fees vary by broker/account;
+  // callers can override both percentages. We model buy and sell separately
+  // instead of subtracting an arbitrary flat 1% from every outcome.
+  const DEFAULT_BUY_COST_PCT = 0.15;
+  const DEFAULT_SELL_COST_PCT = 0.25;
+
+  function netOutcome(signal, entry, finalClose, buyCostPct, sellCostPct) {
+    if (!(entry > 0) || !(finalClose > 0)) return null;
+    const buyFee = Math.max(0, Number(buyCostPct) || 0) / 100;
+    const sellFee = Math.max(0, Number(sellCostPct) || 0) / 100;
+    if (signal === 'BUY') {
+      // Long-only round trip: pay buy fee on entry, sell fee on exit.
+      return ((finalClose * (1 - sellFee)) / (entry * (1 + buyFee)) - 1) * 100;
+    }
+    // SELL is treated as an exit signal for an existing long position, not
+    // as a short sale. The metric therefore measures the future move avoided,
+    // net of the sale fee at the signal date.
+    return -(finalClose / entry - 1) * 100 - Number(sellCostPct || 0);
+  }
+
   const scoreBucket = score => score < 60 ? '50-59' :
     score < 65 ? '60-64' : score < 70 ? '65-69' :
     score < 75 ? '70-74' : score < 85 ? '75-84' : '85+';
@@ -45,7 +65,12 @@ window.StockFlowCalibration = (() => {
   function walkForward(series, options = {}) {
     const horizon = Math.max(1, Number(options.horizon || 5));
     const lookback = Math.max(2, Number(options.lookback || 20));
-    const costPct = Math.max(0, Number(options.costPct || 0));
+    const buyCostPct = Math.max(0, Number(
+      options.buyCostPct == null ? DEFAULT_BUY_COST_PCT : options.buyCostPct
+    ));
+    const sellCostPct = Math.max(0, Number(
+      options.sellCostPct == null ? DEFAULT_SELL_COST_PCT : options.sellCostPct
+    ));
     const rowsByStock = Array.isArray(series) ? series : [];
     const observations = [];
 
@@ -67,7 +92,8 @@ window.StockFlowCalibration = (() => {
 
         const rawReturn = pct(finalClose, entry);
         const signedGross = a.signal === 'BUY' ? rawReturn : -rawReturn;
-        const signedNet = signedGross - costPct;
+        const signedNet = netOutcome(a.signal, entry, finalClose, buyCostPct, sellCostPct);
+        if (!Number.isFinite(signedNet)) continue;
 
         // True path-based excursions after the signal close through T+horizon.
         // BUY: downside is low/entry - 1; upside is high/entry - 1.
@@ -93,6 +119,8 @@ window.StockFlowCalibration = (() => {
           score: num(a.score) ?? 0,
           confidence: num(a.confidence) ?? 0,
           pattern: a.pattern || 'NEUTRAL',
+          buyCostPct,
+          sellCostPct,
           brokerAvailable: !!(a.broker && a.broker.available),
           mae: Math.max(...maePath),
           mfe: Math.max(...mfePath)
@@ -111,7 +139,8 @@ window.StockFlowCalibration = (() => {
     const sellObs = enriched.filter(x => x.signal === 'SELL');
 
     return {
-      horizon, lookback, costPct,
+      horizon, lookback, buyCostPct, sellCostPct,
+      costModel: 'BUY entry fee + SELL exit fee; SELL signal = avoided downside net of exit fee',
       total: summarize(enriched),
       buy: summarize(buyObs),
       sell: summarize(sellObs),
