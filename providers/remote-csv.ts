@@ -20,9 +20,22 @@ export async function remoteCsvDay(date:string){
 }
 export async function remoteCsvRange(from:string,to:string,tickers:string[]=[]){
   const out:any[]=[]; const wanted=new Set(tickers.map(x=>x.toUpperCase()));
+  const days:string[]=[];
   for(let d=new Date(`${from.slice(0,4)}-${from.slice(4,6)}-${from.slice(6,8)}T00:00:00Z`),e=new Date(`${to.slice(0,4)}-${to.slice(4,6)}-${to.slice(6,8)}T00:00:00Z`);d<=e;d=new Date(+d+86400000)){
-    const ds=d.toISOString().slice(0,10).replaceAll('-','');
-    try{const rows=await remoteCsvDay(ds);for(const x of rows)if(!wanted.size||wanted.has(x.ticker))out.push(x)}catch(e){if(!String(e).includes('HTTP 404')) console.warn('[REMOTE CSV]',ds,String(e))}
+    days.push(d.toISOString().slice(0,10).replaceAll('-',''));
+  }
+  // Fetch several trading days concurrently. The previous sequential loop could
+  // take minutes for ALL/long lookbacks and made the PWA appear to have no data.
+  for(let i=0;i<days.length;i+=8){
+    const batch=await Promise.allSettled(days.slice(i,i+8).map(ds=>remoteCsvDay(ds)));
+    batch.forEach((r,j)=>{
+      const ds=days[i+j];
+      if(r.status==='fulfilled'){
+        for(const x of r.value)if(!wanted.size||wanted.has(x.ticker))out.push(x);
+      }else if(!String(r.reason).includes('HTTP 404')){
+        console.warn('[REMOTE CSV]',ds,String(r.reason));
+      }
+    });
   }
   return out;
 }
