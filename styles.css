@@ -12,3 +12,5 @@ header{padding-top:max(13px,calc(env(safe-area-inset-top) + 7px));}
 
 /* Mobile readability */
 @media(max-width:650px){body{font-size:16px}header h1{font-size:21px}header p{font-size:12px}h2{font-size:17px}.legend{font-size:12px}.metrics div{font-size:12px}.metrics strong{font-size:22px}th{font-size:10px}td{padding:11px 8px}td b{font-size:15px}.pareto-detail h3{font-size:16px}.detailgrid{gap:9px}.detailgrid div{padding:11px}.detailgrid small{font-size:10px}.detailgrid b{font-size:16px}.btstats>div,.btstats>div small,.btstats>div span{font-size:10px}}
+
+.moment-pareto{margin-top:16px;border-top:1px solid #e5e7eb;padding-top:14px}.moment-pareto h3{margin:0 0 8px;font-size:16px}.moment-pareto .condition-guide{margin-bottom:10px}.moment-pareto .tablewrap{overflow-x:auto}.moment-pareto table{min-width:650px}.moment-pareto th,.moment-pareto td{white-space:nowrap}.moment-pareto th:nth-child(2),.moment-pareto th:nth-child(5){text-align:left}.moment-note{display:block;margin-top:9px;color:#6b7280;font-size:11px;line-height:1.4}
