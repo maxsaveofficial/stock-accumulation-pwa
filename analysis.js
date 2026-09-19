@@ -151,11 +151,18 @@ window.StockFlow = (() => {
       if(finite(p.high)>=finite(prev.high)&&finite(p.high)>=finite(next.high))swingHighs.push(finite(p.high));
       if(finite(p.low)<=finite(prev.low)&&finite(p.low)<=finite(next.low))swingLows.push(finite(p.low));
     }
-    const support=swingLows.length?Math.max(...swingLows):(
-      recent.length?Math.min(...recent.map(x=>finite(x.low))):finite(last.low)
+    const priorClose=finite(last.close);
+    const supportCandidates=swingLows.filter(x=>x<=priorClose);
+    const resistanceCandidates=swingHighs.filter(x=>x>=priorClose);
+    const support=supportCandidates.length?Math.max(...supportCandidates):(
+      swingLows.length?Math.min(...swingLows):(
+        recent.length?Math.min(...recent.map(x=>finite(x.low))):finite(last.low)
+      )
     );
-    const resistance=swingHighs.length?Math.min(...swingHighs):(
-      recent.length?Math.max(...recent.map(x=>finite(x.high))):finite(last.high)
+    const resistance=resistanceCandidates.length?Math.min(...resistanceCandidates):(
+      swingHighs.length?Math.max(...swingHighs):(
+        recent.length?Math.max(...recent.map(x=>finite(x.high))):finite(last.high)
+      )
     );
     const supportDist=atr?(last.close-support)/atr:0;
     const resistanceDist=atr?(resistance-last.close)/atr:0;
