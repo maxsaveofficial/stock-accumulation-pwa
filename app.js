@@ -7,7 +7,7 @@ function table(items,type){return items.length?items.map((x,i)=>`<tr data-ticker
 let renderSeq=0;
 function render(){
   const seq=++renderSeq;
-  const lb=+$('lookback').value,h=20,chosen=[...selectedTickers],
+  const lb=Math.max(2,+$('lookback').value||20),chosen=[...selectedTickers],
         pool=chosen.length===data.length?data:data.filter(x=>chosen.includes(x.ticker)),
         s=chosen.length===1?chosen[0]:'ALL',
         btPool=backtestTicker&&backtestSeries?[backtestSeries]:pool;
@@ -25,7 +25,7 @@ function render(){
   setTimeout(()=>{
     if(seq!==renderSeq)return;
     try{
-      const o=StockFlow.classify(pool,h),r=o.results,n=r.length||1,
+      const o=StockFlow.classify(pool,lb),r=o.results,n=r.length||1,
             b=r.filter(x=>x.signal==='BUY').length,
             sl=r.filter(x=>x.signal==='SELL').length;
       if(seq!==renderSeq)return;
