@@ -120,26 +120,43 @@ window.StockFlow = (() => {
     const downVol=sum(w.map(x=>x.close<x.open?finite(x.volume):x.close===x.open?0.5*finite(x.volume):0));
     const pressure=upVol+downVol?100*upVol/(upVol+downVol):50;
 
-    const sma5=sma(closes,5), sma20=sma(closes,20), sma60=sma(closes,60);
+    // Trend is intentionally constrained to the selected lookback window.
+    // A 5D/10D scan must not silently import 20D/60D trend evidence.
+    const trendRows=w;
+    const trendCloses=trendRows.map(x=>finite(x.close));
+    const fastLen=Math.min(5,trendCloses.length);
+    const slowLen=Math.min(20,trendCloses.length);
+    const smaFast=avg(trendCloses.slice(-fastLen));
+    const smaSlow=avg(trendCloses.slice(-slowLen));
     const atrPct=last.close?atr/last.close*100:0;
-    const dist20=sma20?((last.close/sma20)-1)*100:0;
-    const dist60=sma60?((last.close/sma60)-1)*100:0;
-    const slope5=sma5&&closes.length>=10?pct(sma5,sma(closes.slice(0,-5),5)||sma5):0;
-    const slope20=sma20&&closes.length>=40?pct(sma20,sma(closes.slice(0,-20),20)||sma20):0;
-    // Volatility-adjusted trend: price distance and moving-average slope are
-    // expressed in ATR units, making the score comparable across stocks.
+    const distSlow=smaSlow?((last.close/smaSlow)-1)*100:0;
+    const slopeFast=trendCloses.length>=Math.min(10,trendCloses.length)
+      ?pct(smaFast,avg(trendCloses.slice(-Math.min(10,trendCloses.length),-fastLen))||smaFast):0;
+    const slopeSlow=trendCloses.length>=Math.min(2*slowLen,trendCloses.length)&&slowLen>1
+      ?pct(smaSlow,avg(trendCloses.slice(-2*slowLen,-slowLen))||smaSlow):0;
+    // Volatility-adjusted trend: all inputs come from the selected lookback.
     const trendRaw=50+
-      (dist20/(Math.max(atrPct,0.1)))*10+
-      (dist60/(Math.max(atrPct,0.1)))*6+
-      (slope5/Math.max(atrPct,0.1))*4+
-      (slope20/Math.max(atrPct,0.1))*5;
+      (distSlow/Math.max(atrPct,0.1))*12+
+      (slopeFast/Math.max(atrPct,0.1))*4+
+      (slopeSlow/Math.max(atrPct,0.1))*6;
     const trend=clamp(trendRaw);
 
-    // Structure-based support/resistance from recent swing extrema, excluding
-    // the current bar. ATR distance prevents tiny absolute gaps from looking safe.
+    // Structure-based support/resistance: use confirmed one-bar swing points
+    // inside the selected lookback, excluding the current bar. If there are
+    // too few pivots, fall back to the recent extrema so short windows remain usable.
     const recent=w.slice(0,-1);
-    const support=recent.length?Math.min(...recent.map(x=>finite(x.low))):finite(last.low);
-    const resistance=recent.length?Math.max(...recent.map(x=>finite(x.high))):finite(last.high);
+    const swingHighs=[],swingLows=[];
+    for(let i=1;i<recent.length-1;i++){
+      const p=recent[i],prev=recent[i-1],next=recent[i+1];
+      if(finite(p.high)>=finite(prev.high)&&finite(p.high)>=finite(next.high))swingHighs.push(finite(p.high));
+      if(finite(p.low)<=finite(prev.low)&&finite(p.low)<=finite(next.low))swingLows.push(finite(p.low));
+    }
+    const support=swingLows.length?Math.max(...swingLows):(
+      recent.length?Math.min(...recent.map(x=>finite(x.low))):finite(last.low)
+    );
+    const resistance=swingHighs.length?Math.min(...swingHighs):(
+      recent.length?Math.max(...recent.map(x=>finite(x.high))):finite(last.high)
+    );
     const supportDist=atr?(last.close-support)/atr:0;
     const resistanceDist=atr?(resistance-last.close)/atr:0;
     const supportScore=clamp(100-Math.abs(supportDist)*18);
