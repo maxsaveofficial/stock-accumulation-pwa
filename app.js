@@ -342,9 +342,18 @@ async function loadLiveAll(){const p=provider(),to=new Date(),from=new Date(to.g
 async function loadLiveStock(){backtestTicker='';backtestSeries=null;const t=[...selectedTickers];if(t.length!==1)return loadLiveAll();const ticker=t[0];const p=provider(),to=new Date(),from=new Date(to.getTime()-364*86400000),url=`${BACKEND_URL}/stock?ticker=${encodeURIComponent(ticker)}&from=${ymd(from)}&to=${ymd(to)}&provider=${encodeURIComponent(p)}`;setLiveStatus(`Mengambil ${ticker} via ${p.toUpperCase()}...`);const res=await fetch(url,{cache:'no-store'}),j=await res.json();if(!res.ok||!j.ok)throw Error(j.error||`HTTP ${res.status}`);const prices=StockFlowProvider.normalize(j.prices||[]),br=j.broker||[];if(!prices.length)throw Error('OHLCV kosong');const fresh=StockFlowProvider.group(StockFlowProvider.mergeBrokerRows(prices,br));const keep=data.filter(x=>x.ticker!==ticker);data=[...keep,...fresh];brokerRows=br;selectedTickers=new Set([ticker]);refresh();render();$('status').textContent=(j.provider||p).toUpperCase();setLiveStatus(`${j.source||p} · ${ticker} · ${prices.length} hari · ${br.length} broker rows`);saveCache();stamp()}
 function stamp(){const t=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});const old=$('lastUpdate');if(old)old.textContent=t;const out=$('lastUpdateInline');if(out)out.textContent=t}function setLiveStatus(x){const old=$('liveStatus');if(old)old.textContent=x;const out=$('liveStatusInline');if(out)out.textContent=x}
 async function autoLoad(){
+  // In AUTO mode, paint the last successful dataset immediately, then refresh
+  // it in the background. This prevents a slow/temporary provider outage from
+  // making the PWA look empty.
+  const hadCache=provider()==='auto'&&restoreCache();
   try{
     await loadLiveStock();
   }catch(e){
+    if(provider()==='auto'&&hadCache){
+      $('status').textContent='CACHE · LIVE REFRESH FAILED';
+      setLiveStatus(`Cache lokal tetap dipakai · refresh live gagal: ${e.message}`);
+      return;
+    }
     if(provider()==='auto'&&restoreCache())return;
     const explicit=provider()!=='auto';
     $('status').textContent=explicit?'LIVE ERROR':'OFFLINE';
