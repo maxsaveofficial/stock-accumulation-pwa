@@ -9,41 +9,126 @@ function momentPareto(all,lookback=20){
   const rows=all.map(s=>{
     const a=StockFlow.analyze(s.rows,lb);
     if(!a)return null;
-    const b=a.broker||{},sb=a.scoreBreakdown||{},aw=sb.accumulationWeighted||{},dw=sb.distributionWeighted||{};
-    const accEarly=(
-      .22*Number(aw.broker||a.brokerScore||50)+
-      .18*Number(aw.absorption||a.absorption||50)+
-      .16*Number(aw.support||a.support||50)+
-      .14*Number(aw.flowDivergence||50)+
-      .12*Number(aw.trend||a.trend||50)+
-      .10*Number(aw.moneyFlow||a.mfNorm||50)+
-      .08*(100-Math.min(100,Number(a.chasePenalty||0)))
-    );
-    const sellEarly=(
-      .22*Number(dw.broker||100-(a.brokerScore||50))+
-      .18*Number(dw.rejection||50)+
-      .16*Number(dw.support||50)+
-      .14*Number(dw.flowDivergence||50)+
-      .12*Number(dw.trend||100-(a.trend||50))+
-      .10*Number(dw.moneyFlow||100-(a.mfNorm||50))+
-      .08*Math.min(100,Number(a.breakdown||0))
-    );
-    const persistence=b.available?Number(b.persistence5||0):0;
+
+    // IMPORTANT: scoreBreakdown.accumulation/distribution are RAW 0-100
+    // evidence. The *Weighted variants are already multiplied by their
+    // weights (for example broker max=18), so using them as 0-100 inputs
+    // compresses the Pareto score into the old 45-48 range.
+    const sb=a.scoreBreakdown||{},ae=sb.accumulation||{},de=sb.distribution||{};
+    const b=a.broker||{};
+    const r=(s.rows||[]).slice().sort((x,y)=>new Date(x.date)-new Date(y.date));
+    const recent=r.slice(-Math.min(lb,r.length));
+    const prev=recent.length>1?recent[recent.length-2]:null;
+    const priceMove1=prev&&prev.close?pct(a.price,prev.close):0;
+    const baseRows=recent.slice(0,-1);
+    const baseHigh=baseRows.length?Math.max(...baseRows.map(x=>Number(x.high)||0)):a.resistance;
+    const baseLow=baseRows.length?Math.min(...baseRows.map(x=>Number(x.low)||0)):a.support;
+    const baseWidth=a.atr>0?(baseHigh-baseLow)/a.atr:99;
+    const extension=a.atr>0?Math.max(0,(a.price-a.resistance)/a.atr):0;
+    const belowSupport=a.atr>0?(a.support-a.price)/a.atr:0;
+    const priceMove5=recent.length>5&&recent[recent.length-6].close
+      ?pct(a.price,recent[recent.length-6].close):priceMove1;
+
+    const persistence=b.available?Number(b.persistence5||50):50;
     const concentration=b.available?Number(b.concentration||0):0;
-    const buyTiming=Math.max(0,Math.min(100,
-      .65*accEarly+.20*persistence+.15*(100-Math.min(100,concentration))
-    ));
-    const sellTiming=Math.max(0,Math.min(100,
-      .65*sellEarly+.20*(100-persistence)+.15*concentration
-    ));
-    const buyEligible=a.signal==='BUY'||(a.pattern==='ABSORPTION'||a.pattern==='QUIET ACCUMULATION');
-    const sellEligible=a.signal==='SELL'||a.pattern==='DISTRIBUTION'||a.pattern==='BREAKDOWN RISK';
-    const buyScore=Math.max(0,Math.min(100,.55*buyTiming+.25*Number(a.acc||50)+.20*Number(a.confidence||50)));
-    const sellScore=Math.max(0,Math.min(100,.55*sellTiming+.25*Number(a.dist||50)+.20*Number(a.confidence||50)));
-    const buyPhase=a.pattern==='QUIET ACCUMULATION'?'ACCUMULATION':a.pattern==='ABSORPTION'?'ABSORPTION':a.pattern==='MARKUP / BREAKOUT'?'EARLY/MARKUP':a.trend<55?'BASE':'MOMENTUM';
-    const sellPhase=a.pattern==='DISTRIBUTION'?'DISTRIBUTION':a.pattern==='BREAKDOWN RISK'?'BREAKDOWN RISK':a.trend>=60?'LATE MOMENTUM':'WEAKENING';
-    return {ticker:s.ticker||a.ticker, a, b, buyScore, sellScore, buyEligible, sellEligible, buyPhase, sellPhase};
+
+    // "Early" is a separate objective from strength:
+    // strong broker/flow evidence is useful, but extension, chase and
+    // already-completed breakouts reduce the timing score.
+    const trendEarly=100-Math.min(100,Math.abs(Number(a.trend||50)-55)*2);
+    const baseScore=clamp(100-baseWidth*14);
+    const extensionPenalty=clamp(
+      Math.max(0,priceMove5-4)*7+
+      Math.max(0,priceMove1-6)*6+
+      Math.max(0,extension)*22+
+      Math.max(0,Number(a.chasePenalty||0))
+    );
+    const earlyFactor=clamp(100-extensionPenalty);
+
+    const buyTiming=clamp(
+      .20*Number(ae.broker||a.brokerScore||50)+
+      .13*Number(ae.absorption||a.absorption||50)+
+      .12*Number(ae.flowDivergence||50)+
+      .10*Number(ae.support||a.support||50)+
+      .10*trendEarly+
+      .10*Number(ae.moneyFlow||a.mfNorm||50)+
+      .07*Number(ae.pressure||a.pressure||50)+
+      .08*Math.min(100,persistence)+
+      .05*Math.min(100,100-concentration)+
+      .05*baseScore+
+      .10*earlyFactor
+    );
+
+    const sellEarlyFactor=clamp(
+      100-
+      Math.max(0,Math.abs(Math.min(0,priceMove5))*4)+
+      Math.max(0,belowSupport)*8
+    );
+    const sellTiming=clamp(
+      .20*Number(de.broker||100-(a.brokerScore||50))+
+      .13*Number(de.rejection||50)+
+      .12*Number(de.flowDivergence||50)+
+      .10*Number(de.support||50)+
+      .10*Number(de.trend||100-(a.trend||50))+
+      .10*Number(de.moneyFlow||100-(a.mfNorm||50))+
+      .07*Number(de.pressure||100-(a.pressure||50))+
+      .08*Math.min(100,100-persistence)+
+      .05*Math.min(100,concentration)+
+      .10*Math.min(100,sellEarlyFactor)+
+      .05*Math.min(100,Number(a.breakdown||0))
+    );
+
+    const buyPhase=
+      extensionPenalty>=55?'LATE / CHASE':
+      a.pattern==='MARKUP / BREAKOUT'&&Number(a.volRatio)>=1.2?'EARLY BREAKOUT':
+      a.pattern==='ABSORPTION'?'ABSORPTION':
+      a.pattern==='QUIET ACCUMULATION'?'PRE-ACCUMULATION':
+      Number(a.trend)>=65?'MARKUP':
+      Number(a.brokerScore)>=60&&Math.abs(priceMove5)<=4?'PRE-ACCUMULATION':
+      'TRANSITION';
+
+    const sellPhase=
+      priceMove1<=-8&&Number(a.volRatio)>=1.5?'PANIC / LATE EXIT':
+      belowSupport>0?'BREAKDOWN':
+      Number(a.breakdown)>=55?'BREAKDOWN WARNING':
+      Number(de.broker||100-(a.brokerScore||50))>=65&&priceMove5>=-2?'DISTRIBUTION EARLY':
+      Number(a.dist)>=65?'DISTRIBUTION CONFIRMED':
+      'WEAKENING';
+
+    const buyEligible=
+      a.signal==='BUY'||
+      a.pattern==='ABSORPTION'||
+      a.pattern==='QUIET ACCUMULATION'||
+      (Number(a.brokerScore)>=60&&Number(a.acc)>=55);
+
+    const sellEligible=
+      a.signal==='SELL'||
+      a.pattern==='DISTRIBUTION'||
+      a.pattern==='BREAKDOWN RISK'||
+      Number(a.dist)>=55||
+      belowSupport>0;
+
+    // Keep strength as a secondary component; the Pareto ranking is primarily
+    // about phase/timing, so a very strong but already-extended move is penalized.
+    const buyScore=clamp(
+      .62*buyTiming+
+      .23*Number(a.acc||50)+
+      .15*Number(a.confidence||50)
+    );
+    const sellScore=clamp(
+      .62*sellTiming+
+      .23*Number(a.dist||50)+
+      .15*Number(a.confidence||50)
+    );
+
+    return {
+      ticker:s.ticker||a.ticker,a,b,
+      buyScore,sellScore,buyEligible,sellEligible,
+      buyPhase,sellPhase,
+      diagnostics:{priceMove1,priceMove5,baseWidth,extension,extensionPenalty,belowSupport}
+    };
   }).filter(Boolean);
+
   const buys=rows.filter(x=>x.buyEligible).sort((a,b)=>b.buyScore-a.buyScore).slice(0,5);
   const sells=rows.filter(x=>x.sellEligible).sort((a,b)=>b.sellScore-a.sellScore).slice(0,5);
   return {buys,sells};
