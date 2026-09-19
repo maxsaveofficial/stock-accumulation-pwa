@@ -107,15 +107,7 @@ function render(){
           if(seq!==renderSeq)break;
           await new Promise(r=>setTimeout(r,20));
           try{
-            const raw=window.StockFlow?.backtest(pool,h,lb);
-            // Use the scanner's own historical signal engine for the preview.
-            // Apply the displayed 1% internal stress cost to the average return
-            // without changing the underlying signal count.
-            const x={total:{
-              avgReturn:Number.isFinite(Number(raw?.avgReturn))?Number(raw.avgReturn):null,
-              hitRate:raw?.hitRate,
-              count:Number(raw?.count||0)
-            }};
+            const x=window.StockFlowCalibration?.walkForward(pool,{lookback:Math.min(lb,20),horizon:h,costPct:1});
             await update(h,x);
           }catch(err){
             console.error('[BACKTEST T+'+h+']',err);
