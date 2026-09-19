@@ -5,6 +5,8 @@ function fmt(x,d=2){return x==null||!Number.isFinite(Number(x))?'-':Number(x).to
 function statCells(s){return `<td>${s.count}</td><td>${fmt(s.hitRate,1)}%</td><td>${fmt(s.avgReturn)}%</td><td>${fmt(s.medianReturn)}%</td><td>${fmt(s.expectancy)}%</td><td>${fmt(s.winLossRatio)}</td><td>${fmt(s.avgMAE)}%</td><td>${fmt(s.avgMFE)}%</td>`}
 function table(items,type){return items.length?items.map((x,i)=>`<tr data-ticker="${esc(x.ticker)}"><td>${i+1}</td><td><b>${esc(x.ticker)}</b></td><td>${x.score.toFixed(0)}</td><td>${(type==='BUY'?x.acc:x.dist).toFixed(0)}</td><td>${(type==='BUY'?x.trend:x.breakdown).toFixed(0)}</td></tr>`).join(''):'<tr><td colspan="5">Belum ada kandidat.</td></tr>'}
 function momentPareto(all,lookback=20){
+  const clamp=(x,a=0,b=100)=>Math.max(a,Math.min(b,x));
+  const pct=(a,b)=>b?((a/b)-1)*100:0;
   const lb=Math.max(2,Number(lookback)||20);
   const rows=all.map(s=>{
     const a=StockFlow.analyze(s.rows,lb);
