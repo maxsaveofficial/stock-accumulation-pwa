@@ -19,7 +19,15 @@ export async function yahooOhlcv(ticker:string,from:string,to:string,name=''){
   const qs=`period1=${p1}&period2=${p2}&interval=1d&events=history&includeAdjustedClose=false`;
   const response=await yahooFetch(`${CHARTS[0]}/${encodeURIComponent(ticker.toUpperCase())}.JK?${qs}`);
   if(!response.ok)throw new Error(`Yahoo Finance HTTP ${response.status}`);
-  const payload=await response.json(),result=payload?.chart?.result?.[0];
+  const contentType=response.headers.get('content-type')||'';
+  const raw=await response.text();
+  let payload:any;
+  try{payload=JSON.parse(raw)}catch{
+    const preview=raw.replace(/\\s+/g,' ').trim().slice(0,160);
+    throw Error(`Yahoo Finance returned non-JSON${response.status?` HTTP ${response.status}`:''}${contentType?` (${contentType})`:''}: ${preview||'empty response'}`);
+  }
+  if(payload?.chart?.error)throw Error(`Yahoo Finance: ${payload.chart.error.description||payload.chart.error.code||'chart error'}`);
+  const result=payload?.chart?.result?.[0];
   if(!result)throw new Error(`Yahoo Finance: no data for ${ticker}`);
   const q=result.indicators?.quote?.[0]??{};
   return(result.timestamp??[]).map((ts:number,i:number)=>({date:new Date(ts*1000).toISOString().slice(0,10),ticker:ticker.toUpperCase(),name:name||undefined,open:Number(q.open?.[i]),high:Number(q.high?.[i]),low:Number(q.low?.[i]),close:Number(q.close?.[i]),volume:Number(q.volume?.[i]??0),value:0})).filter((r:any)=>[r.open,r.high,r.low,r.close].every(Number.isFinite));
